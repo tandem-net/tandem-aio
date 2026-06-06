@@ -1,64 +1,47 @@
 // run.rs
 // runs the deserialized code and handles the execution flow
 
-// TODO: Implement Python execution environment
-// This could use:
-// - PyO3 for direct Python integration
-// - subprocess spawning with Python interpreter
-// - WASM-based Python runtime
+use pyo3::prelude::*;
+use pyo3::types::{PyBytes, PyTuple};
 
-/// Executes a deserialized Python function with given arguments
-/// 
-/// # Arguments
-/// * `func_obj` - Serialized function object
-/// * `args` - Vector of serialized argument objects
-///
-/// # Returns
-/// * Serialized result of the function execution
 pub async fn execute_python_task(
     func_obj: Vec<u8>,
     args: Vec<Vec<u8>>,
-) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    println!("Running Python task with {} arguments", args.len());
+) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
+    println!("Spawning dynamic Python worker execution thread...");
 
-    // TODO: Implement actual execution:
-    // 1. Deserialize function object using cloudpickle
-    // 2. Deserialize each argument
-    // 3. Call function with arguments in Python interpreter
-    // 4. Serialize result back to bytes
-    
-    // Placeholder: return empty result
-    let result = vec![];
-    
-    Ok(result)
-}
+    let result = tokio::task::spawn_blocking(move || {
+        Python::with_gil(|py| -> PyResult<Vec<u8>> {
+            // Import cloudpickle inside Python runtime
+            let cloudpickle = py.import_bound("cloudpickle")?;
+            
+            // Reconstruct the pickled function object
+            let py_func_bytes = PyBytes::new_bound(py, &func_obj);
+            let func = cloudpickle.call_method1("loads", (py_func_bytes,))?;
+            
+            // Reconstruct arguments
+            let mut py_args = Vec::new();
+            for arg_bytes in args {
+                let py_arg_bytes = PyBytes::new_bound(py, &arg_bytes);
+                let decoded_arg = cloudpickle.call_method1("loads", (py_arg_bytes,))?;
+                py_args.push(decoded_arg);
+            }
+            let args_tuple = PyTuple::new_bound(py, py_args);
+            
+            // Invoke user function
+            let exec_result = func.call1(args_tuple)?;
+            
+            // Re-pickle the output 
+            let serialized_output: Bound<'_, PyBytes> = cloudpickle
+                .call_method1("dumps", (exec_result,))?
+                .downcast_into::<PyBytes>()?;
+                
+            Ok(serialized_output.as_bytes().to_vec())
+        })
+    }).await?;
 
-/// Executes Python code by spawning a Python subprocess
-/// (Future implementation option)
-#[allow(dead_code)]
-async fn execute_with_subprocess(
-    func_bytes: Vec<u8>,
-    args_bytes: Vec<Vec<u8>>,
-) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    // TODO: Spawn Python process with cloudpickle deserialization
-    // Write function and args to subprocess stdin
-    // Read serialized result from subprocess stdout
-    
-    Ok(vec![])
-}
-
-/// Executes Python code using PyO3 integration
-/// (Future implementation option, requires PyO3 dependency)
-#[allow(dead_code)]
-async fn execute_with_pyo3(
-    func_bytes: Vec<u8>,
-    args_bytes: Vec<Vec<u8>>,
-) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    // TODO: Use PyO3 to:
-    // 1. Initialize Python interpreter
-    // 2. Deserialize function using cloudpickle
-    // 3. Execute function with arguments
-    // 4. Serialize result
-    
-    Ok(vec![])
+    match result {
+        Ok(bytes) => Ok(bytes),
+        Err(py_err) => Err(format!("Python Script Error: {:?}", py_err).into()),
+    }
 }

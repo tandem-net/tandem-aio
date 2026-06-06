@@ -1,13 +1,6 @@
 // client.rs
 // handles all the processing: receives tasks from network, passes to run.rs for execution
 
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
-use tokio::net::TcpStream;
-
-use crate::network::{Packet, ClientState, TaskPayload, ResultPayload, send_packet, receive_packet, parse_packet};
-use crate::run;
-
 // PING: 
 // every 5 seconds
 // send keepalive to server: Header: "ping"
@@ -43,6 +36,15 @@ use crate::run;
 //     "result": (serialized python result)
 // }
 
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+use tokio::net::TcpStream;
+use tokio::sync::mpsc;
+use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
+
+use crate::network::{Packet, ClientState, TaskPayload, ResultPayload, send_packet, receive_packet, parse_packet};
+use crate::run;
+
 pub struct TandemClient {
     server_addr: String,
     state: Arc<Mutex<ClientState>>,
@@ -56,45 +58,58 @@ impl TandemClient {
         }
     }
 
-    pub async fn connect(&self) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn connect(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let stream = TcpStream::connect(&self.server_addr).await?;
-        
         println!("Connected to server at {}", self.server_addr);
 
-        let stream_clone = stream.try_clone()?;
-        let state_clone = Arc::clone(&self.state);
+        let (read_half, write_half) = stream.into_split();
         
-        // Spawn ping loop
-        tokio::spawn(Self::ping_loop(state_clone, stream_clone));
+        // MPSC channel to pipeline outbound network packets safely
+        let (tx, rx) = mpsc::channel::<Packet>(32);
 
-        // Main message receiving loop
-        self.message_loop(stream).await?;
+        // 1. Spawn Outbound Network Driver Loop
+        tokio::spawn(Self::write_loop(write_half, rx));
+
+        // 2. Spawn Inbound Keepalive Ping Loop
+        let ping_tx = tx.clone();
+        let state_clone = Arc::clone(&self.state);
+        tokio::spawn(Self::ping_loop(state_clone, ping_tx));
+
+        // 3. Process main task worker incoming flow
+        self.message_loop(read_half, tx).await?;
 
         Ok(())
     }
 
+    async fn write_loop(mut write_stream: OwnedWriteHalf, mut rx: mpsc::Receiver<Packet>) {
+        while let Some(packet) = rx.recv().await {
+            if let Err(e) = send_packet(&mut write_stream, &packet).await {
+                eprintln!("Network writer loop error: {}", e);
+                break;
+            }
+        }
+    }
+
     async fn ping_loop(
         state: Arc<Mutex<ClientState>>,
-        mut stream: TcpStream,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+        tx: mpsc::Sender<Packet>,
+    ) {
         loop {
             tokio::time::sleep(Duration::from_secs(crate::PING_INTERVAL_SECS)).await;
 
-            let mut client_state = state.lock().unwrap();
+            let mut client_state = match state.lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => poisoned.into_inner(),
+            };
             let ping_payload = client_state.create_ping_payload();
 
-            let packet = Packet {
-                header: "ping".to_string(),
-                payload: serde_json::to_value(&ping_payload)?,
-            };
-
-            match send_packet(&mut stream, &packet).await {
-                Ok(_) => {
-                    println!("Sent ping: {:?}", ping_payload);
-                }
-                Err(e) => {
-                    eprintln!("Failed to send ping: {}", e);
-                    break;
+            if let Ok(val) = serde_json::to_value(&ping_payload) {
+                let packet = Packet {
+                    header: "ping".to_string(),
+                    payload: val,
+                };
+                if tx.send(packet).await.is_err() {
+                    break; // Connection dropped
                 }
             }
         }
@@ -102,14 +117,15 @@ impl TandemClient {
 
     async fn message_loop(
         &self,
-        mut stream: TcpStream,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+        mut read_stream: OwnedReadHalf,
+        tx: mpsc::Sender<Packet>,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let mut buffer = [0; crate::BUFFER_SIZE];
 
         loop {
-            match receive_packet(&mut stream, &mut buffer).await {
+            match receive_packet(&mut read_stream, &mut buffer).await {
                 Ok(None) => {
-                    println!("Server disconnected");
+                    println!("Server closed socket connection.");
                     break;
                 }
                 Ok(Some(message_str)) => {
@@ -120,86 +136,68 @@ impl TandemClient {
 
                         match parse_packet(line) {
                             Ok(packet) => {
-                                match packet.header.as_str() {
-                                    "task" => {
-                                        let stream_clone = stream.try_clone()?;
-                                        self.process_task(&packet.payload, stream_clone).await?;
-                                    }
-                                    _ => {
-                                        println!("Unknown packet header: {}", packet.header);
-                                    }
+                                if packet.header == "task" {
+                                    let task_tx = tx.clone();
+                                    self.process_task(&packet.payload, task_tx).await?;
+                                } else {
+                                    println!("Unknown header event: {}", packet.header);
                                 }
                             }
-                            Err(e) => {
-                                eprintln!("Failed to parse packet: {}", e);
-                            }
+                            Err(e) => eprintln!("Corrupt packet JSON structure: {}", e),
                         }
                     }
                 }
                 Err(e) => {
-                    eprintln!("Read error: {}", e);
+                    eprintln!("Socket socket read exception: {}", e);
                     break;
                 }
             }
         }
-
         Ok(())
     }
 
     async fn process_task(
         &self,
         payload: &serde_json::Value,
-        mut stream: TcpStream,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+        tx: mpsc::Sender<Packet>,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let task: TaskPayload = serde_json::from_value(payload.clone())?;
+        println!("Initializing Task Execution Context: {}", task.task_id);
 
-        println!("Received task: {}", task.task_id);
-
-        // Update state - mark as busy
         {
             let mut state = self.state.lock().unwrap();
             state.idle = false;
             state.running_task_id = Some(task.task_id.clone());
         }
 
-        // Deserialize function and args, pass to run.rs for execution
         let result = match self.execute_task(&task).await {
             Ok(res) => res,
             Err(e) => {
-                eprintln!("Task execution error: {}", e);
+                eprintln!("Compute Engine failure execution context: {}", e);
                 vec![]
             }
         };
 
-        // Update state - mark as idle
         {
             let mut state = self.state.lock().unwrap();
             state.idle = true;
             state.running_task_id = None;
         }
 
-        // Send result back via network
-        self.send_result(&mut stream, &task.task_id, result).await?;
-
+        self.send_result(tx, &task.task_id, result).await?;
         Ok(())
     }
 
     async fn execute_task(
         &self,
         task: &TaskPayload,
-    ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-        println!("Executing task: {}", task.task_id);
-
-        // Deserialize the function and arguments
+    ) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
         let func_obj = crate::serialization::deserialize(&task.func)?;
         let args: Vec<Vec<u8>> = task.args.iter()
             .map(|arg| crate::serialization::deserialize(arg))
             .collect::<Result<Vec<_>, _>>()?;
 
-        // Pass to run.rs for execution
         let result = run::execute_python_task(func_obj, args).await?;
-
-        // Serialize the result
         let serialized_result = crate::serialization::serialize(&result)?;
 
         Ok(serialized_result)
@@ -207,10 +205,10 @@ impl TandemClient {
 
     async fn send_result(
         &self,
-        stream: &mut TcpStream,
+        tx: mpsc::Sender<Packet>,
         task_id: &str,
         result: Vec<u8>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let result_payload = ResultPayload {
             task_id: task_id.to_string(),
             timestamp: ClientState::get_current_timestamp(),
@@ -222,10 +220,8 @@ impl TandemClient {
             payload: serde_json::to_value(&result_payload)?,
         };
 
-        send_packet(stream, &packet).await?;
-
-        println!("Sent result for task: {}", task_id);
-
+        tx.send(packet).await.map_err(|_| "Failed to forward output to write loop channel")?;
+        println!("Task completed execution. Result pushed to network queue: {}", task_id);
         Ok(())
     }
 }
