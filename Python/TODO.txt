@@ -1,0 +1,16 @@
+Currently, the setup assumes the user is mindful about how function calls are split. 
+They will batch mass function calls where the function is at the lowest level where all inner calls are dependent and cannot be ran in parallel. 
+
+tandem.py
+
+takes 2 parameters:
+the low level function (callable)
+list of function call arguments
+
+serializes the function and parameters
+
+sends request to go server
+
+deserializes go response
+
+returns result
