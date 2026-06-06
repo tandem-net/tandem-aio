@@ -20,9 +20,10 @@ target
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
+
 # MacOS
 .DS_Store
 
-# Python
+# Pyslop
 .venv/
 __pycache__/
