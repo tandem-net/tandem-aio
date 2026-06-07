@@ -1,5 +1,8 @@
 import cmd
+import json
 import os
+from urllib.error import URLError
+from urllib.request import Request, urlopen
 from pathlib import Path
 class MyInteractiveCLI(cmd.Cmd):
     prompt = 'Tandem> '
@@ -96,16 +99,38 @@ class MyInteractiveCLI(cmd.Cmd):
     
     def do_deploy_app(self,line): #port 6767
         """Deploys an app to port 6767 Usage: deploy_app <app_name>"""
-        print("Enter app name to deploy")
         app_name = line.strip()
         if not app_name:
-            print("Error: Usage: remove_app <app_name>")
+            print("Error: Usage: deploy_app <app_name>")
             return
 
-        if(self.validate(app_name)):
-            print(f"{app_name} Found")
-        else:
+        app = self.get_app(app_name)
+        if not app:
             print(f"Error: App '{app_name}' not found")
+            return
+
+        payload = json.dumps({
+            "name": app.name,
+            "language": app.language,
+            "toml_path": app.toml_path,
+        }).encode("utf-8")
+
+        request = Request(
+            "http://localhost:6767/app",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+
+        try:
+            with urlopen(request, timeout=5) as response:
+                response_body = response.read().decode("utf-8")
+        except URLError as exc:
+            print(f"Error: Could not reach test server on port 6767: {exc}")
+            return
+
+        print(f"Deployed '{app.name}' to test server")
+        
             
     def validate(self,app_name):
         for app in self.apps:
@@ -113,6 +138,13 @@ class MyInteractiveCLI(cmd.Cmd):
                 return True
             
         return False
+
+    def get_app(self, app_name):
+        for app in self.apps:
+            if app.name == app_name:
+                return app
+
+        return None
 
     
         
