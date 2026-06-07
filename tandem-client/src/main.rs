@@ -16,7 +16,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Connecting to server at {}", SERVER_ADDR);
     
     let client = client::TandemClient::new(SERVER_ADDR.to_string());
-    client.connect().await?;
+    client.connect().await?; //error
     
     Ok(())
 }

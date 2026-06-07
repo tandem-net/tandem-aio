@@ -73,7 +73,7 @@ impl TandemClient {
         // 2. Spawn Inbound Keepalive Ping Loop
         let ping_tx = tx.clone();
         let state_clone = Arc::clone(&self.state);
-        tokio::spawn(Self::ping_loop(state_clone, ping_tx));
+        tokio::spawn(Self::ping_loop(state_clone, ping_tx)); //error
 
         // 3. Process main task worker incoming flow
         self.message_loop(read_half, tx).await?;
@@ -123,7 +123,7 @@ impl TandemClient {
         let mut buffer = [0; crate::BUFFER_SIZE];
 
         loop {
-            match receive_packet(&mut read_stream, &mut buffer).await {
+            match receive_packet(&mut read_stream, &mut buffer).await { //error
                 Ok(None) => {
                     println!("Server closed socket connection.");
                     break;
