@@ -73,6 +73,27 @@ class MyInteractiveCLI(cmd.Cmd):
         for app in self.apps:
             print(f"  - {app.name} ({app.language})")
     
+    def do_remove_app(self,line):
+        """Removes an app Usage: remove_app <app_name>"""
+        app_name = line.strip()
+        if not app_name:
+            print("Error: Usage: remove_app <app_name>")
+            return
+
+        for i, app in enumerate(self.apps):
+            if app.name == app_name:
+                try:
+                    if os.path.exists(app.toml_path):
+                        os.remove(app.toml_path)
+                except Exception as e:
+                    print(f"Warning: could not remove toml file: {e}")
+
+                del self.apps[i]
+                print(f"App '{app_name}' removed")
+                return
+
+        print(f"Error: App '{app_name}' not found")
+    
         
     
 class App():

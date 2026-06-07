@@ -11,22 +11,22 @@ pub async fn execute_python_task(
     println!("Spawning dynamic Python worker execution thread...");
 
     let result = tokio::task::spawn_blocking(move || {
-        Python::with_gil(|py| -> PyResult<Vec<u8>> {
+        Python::with_gil(|py| -> PyResult<Vec<u8>> {//error
             // Import cloudpickle inside Python runtime
             let cloudpickle = py.import_bound("cloudpickle")?;
             
             // Reconstruct the pickled function object
-            let py_func_bytes = PyBytes::new_bound(py, &func_obj);
+            let py_func_bytes = PyBytes::new_bound(py, &func_obj); //error
             let func = cloudpickle.call_method1("loads", (py_func_bytes,))?;
             
             // Reconstruct arguments
             let mut py_args = Vec::new();
             for arg_bytes in args {
-                let py_arg_bytes = PyBytes::new_bound(py, &arg_bytes);
+                let py_arg_bytes = PyBytes::new_bound(py, &arg_bytes);//error
                 let decoded_arg = cloudpickle.call_method1("loads", (py_arg_bytes,))?;
                 py_args.push(decoded_arg);
             }
-            let args_tuple = PyTuple::new_bound(py, py_args);
+            let args_tuple = PyTuple::new_bound(py, py_args);//error
             
             // Invoke user function
             let exec_result = func.call1(args_tuple)?;
