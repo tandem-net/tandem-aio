@@ -94,6 +94,27 @@ class MyInteractiveCLI(cmd.Cmd):
 
         print(f"Error: App '{app_name}' not found")
     
+    def do_deploy_app(self,line): #port 6767
+        """Deploys an app to port 6767 Usage: deploy_app <app_name>"""
+        print("Enter app name to deploy")
+        app_name = line.strip()
+        if not app_name:
+            print("Error: Usage: remove_app <app_name>")
+            return
+
+        if(self.validate(app_name)):
+            print(f"{app_name} Found")
+        else:
+            print(f"Error: App '{app_name}' not found")
+            
+    def validate(self,app_name):
+        for app in self.apps:
+            if app.name == app_name:
+                return True
+            
+        return False
+
+    
         
     
 class App():
