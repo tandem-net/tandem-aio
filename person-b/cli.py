@@ -1,12 +1,16 @@
 import cmd
-import json
 import os
-from urllib.error import URLError
-from urllib.request import Request, urlopen
 from pathlib import Path
 class MyInteractiveCLI(cmd.Cmd):
     prompt = 'Tandem> '
-    intro = "Welcome to Tandem! type help for commands."
+    intro = """
+     _____ ____  _      ____  _____ _     
+/__ __Y  _ \/ \  /|/  _ \/  __// \__/|
+  / \ | / \|| |\ ||| | \||  \  | |\/||
+  | | | |-||| | \||| |_/||  /_ | |  ||
+  \_/ \_/ \|\_/  \|\____/\____\\_/  \|
+                                      
+    """
 
     apps = []
 
@@ -63,6 +67,7 @@ class MyInteractiveCLI(cmd.Cmd):
         
         app = App(app_name, app_language)
         if app.is_valid():
+            app.add_app()
             self.apps.append(app)
             print(f"App '{app_name}' added with language '{app_language}'")
 
@@ -75,77 +80,6 @@ class MyInteractiveCLI(cmd.Cmd):
         print("Apps:")
         for app in self.apps:
             print(f"  - {app.name} ({app.language})")
-    
-    def do_remove_app(self,line):
-        """Removes an app Usage: remove_app <app_name>"""
-        app_name = line.strip()
-        if not app_name:
-            print("Error: Usage: remove_app <app_name>")
-            return
-
-        for i, app in enumerate(self.apps):
-            if app.name == app_name:
-                try:
-                    if os.path.exists(app.toml_path):
-                        os.remove(app.toml_path)
-                except Exception as e:
-                    print(f"Warning: could not remove toml file: {e}")
-
-                del self.apps[i]
-                print(f"App '{app_name}' removed")
-                return
-
-        print(f"Error: App '{app_name}' not found")
-    
-    def do_deploy_app(self,line): #port 6767
-        """Deploys an app to port 6767 Usage: deploy_app <app_name>"""
-        app_name = line.strip()
-        if not app_name:
-            print("Error: Usage: deploy_app <app_name>")
-            return
-
-        app = self.get_app(app_name)
-        if not app:
-            print(f"Error: App '{app_name}' not found")
-            return
-
-        payload = json.dumps({
-            "name": app.name,
-            "language": app.language,
-            "toml_path": app.toml_path,
-        }).encode("utf-8")
-
-        request = Request(
-            "http://localhost:6767/app",
-            data=payload,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-
-        try:
-            with urlopen(request, timeout=5) as response:
-                response_body = response.read().decode("utf-8")
-        except URLError as exc:
-            print(f"Error: Could not reach test server on port 6767: {exc}")
-            return
-
-        print(f"Deployed '{app.name}' to test server")
-        
-            
-    def validate(self,app_name):
-        for app in self.apps:
-            if app.name == app_name:
-                return True
-            
-        return False
-
-    def get_app(self, app_name):
-        for app in self.apps:
-            if app.name == app_name:
-                return app
-
-        return None
-
     
         
     
@@ -164,18 +98,11 @@ class App():
             print(f"Error: App '{self.name}' already exists")
             return False
         
-        config = {
-            "app": {
-                "name": self.name,
-                "language": self.language
-            }
-        }
-        
-        with open(self.toml_path, 'w') as f:
-            import json
-            f.write(f"[app]\nname = \"{self.name}\"\nlanguage = \"{self.language}\"\n")
-        
         return True
+    
+    def add_app(self):
+        with open(self.toml_path, 'w') as f:
+            f.write(f"[app]\nname = \"{self.name}\"\nlanguage = \"{self.language}\"\n")
     
     def list_app(self):
         """List all TOML files in the toml folder."""
