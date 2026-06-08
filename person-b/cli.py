@@ -15,10 +15,12 @@ class MyInteractiveCLI(cmd.Cmd):
     apps = []
 
     def __init__(self, *args, **kwargs):
+        """initializes cli"""
         super().__init__(*args, **kwargs)
         self.load_all_apps()
 
     def load_all_apps(self):
+        """loads all apps in toml folder into apps list"""
         base_path = os.path.dirname(os.path.abspath(__file__))
         toml_folder = os.path.join(base_path, "toml")
         
@@ -85,12 +87,14 @@ class MyInteractiveCLI(cmd.Cmd):
     
 class App():
     def __init__(self, name, language):
+        """Initalizes app object with name language and toml path"""
         self.name = name
         self.language = language
         base_path = os.path.dirname(os.path.abspath(__file__))
         self.toml_path = os.path.join(base_path, "toml", f"{name}.toml")
 
     def is_valid(self):
+        """Checks if the app already exists in toml directory"""
         toml_dir = os.path.dirname(self.toml_path)
         os.makedirs(toml_dir, exist_ok=True)
         
@@ -101,6 +105,7 @@ class App():
         return True
     
     def add_app(self):
+        """Adds app in toml directory"""
         with open(self.toml_path, 'w') as f:
             f.write(f"[app]\nname = \"{self.name}\"\nlanguage = \"{self.language}\"\n")
     
@@ -120,6 +125,6 @@ class App():
         return list_names
 
 
-
+#slop
 if __name__ == '__main__':
     MyInteractiveCLI().cmdloop()
