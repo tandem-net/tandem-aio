@@ -8,9 +8,13 @@ Deploy must send the files via ...
 
 from flask import Blueprint, request, jsonify
 
+from app.extensions import redis_client
+
 deploy_bp = Blueprint('deploy', __name__)
 
-@deploy_bp.route('/deploy', methods=['POST'])
+
+
+@deploy_bp.route('/', methods=['POST'])
 def deploy():
 
     """
@@ -21,7 +25,7 @@ def deploy():
 
     Upload the TOML file under the field 'toml_file'
     Upload pickles under the field 'pickle_files'
-    
+
     """
 
     if 'toml_file' not in request.files:
