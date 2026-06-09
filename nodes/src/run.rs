@@ -1,47 +1,61 @@
 // run.rs
-// runs the deserialized code and handles the execution flow
-
+// Executes cloudpickle-serialized Python functions received from the server.
+use bytes::Bytes;
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyTuple};
 
-pub async fn execute_python_task(
-    func_obj: Vec<u8>,
-    args: Vec<Vec<u8>>,
-) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
-    println!("Spawning dynamic Python worker execution thread...");
-
-    let result = tokio::task::spawn_blocking(move || {
-        Python::with_gil(|py| -> PyResult<Vec<u8>> {//error
-            // Import cloudpickle inside Python runtime
-            let cloudpickle = py.import_bound("cloudpickle")?;
-            
-            // Reconstruct the pickled function object
-            let py_func_bytes = PyBytes::new_bound(py, &func_obj); //error
-            let func = cloudpickle.call_method1("loads", (py_func_bytes,))?;
-            
-            // Reconstruct arguments
-            let mut py_args = Vec::new();
-            for arg_bytes in args {
-                let py_arg_bytes = PyBytes::new_bound(py, &arg_bytes);//error
-                let decoded_arg = cloudpickle.call_method1("loads", (py_arg_bytes,))?;
-                py_args.push(decoded_arg);
+/// Runs a Python function against multiple argument sets, returning serialized results.
+///
+/// `func_obj` — cloudpickle-serialized Python function, shared across all tasks
+/// `args`     — each element is a cloudpickle-serialized tuple of args for one call
+///
+/// Python equivalent:
+///   results = [execute_python_task(func_obj, task_args) for task_args in args]
+pub async fn execute_python_tasks(func_obj: Bytes, args: Vec<Bytes>) -> Vec<Bytes> {
+    let mut results = Vec::new();
+    for task_args in args {
+        // result = execute_python_task(func_obj, task_args)
+        match execute_python_task(func_obj.clone(), task_args).await {
+            Ok(result) => results.push(result),
+            Err(e) => {
+                // except Exception as e: print(f"Task execution failed: {e}")
+                eprintln!("Task execution failed: {}", e);
+                results.push(Bytes::new()); // results.append(b"")
             }
-            let args_tuple = PyTuple::new_bound(py, py_args);//error
-            
-            // Invoke user function
-            let exec_result = func.call1(args_tuple)?;
-            
-            // Re-pickle the output 
-            let serialized_output: Bound<'_, PyBytes> = cloudpickle
-                .call_method1("dumps", (exec_result,))?
-                .downcast_into::<PyBytes>()?;
-                
-            Ok(serialized_output.as_bytes().to_vec())
-        })
-    }).await?;
-
-    match result {
-        Ok(bytes) => Ok(bytes),
-        Err(py_err) => Err(format!("Python Script Error: {:?}", py_err).into()),
+        }
     }
+    results
+}
+
+/// Deserializes a Python function and its args, calls it, and returns the serialized result.
+///
+/// `func_obj` — cloudpickle-serialized callable
+/// `args`     — cloudpickle-serialized tuple, unpacked as positional args: func(*args)
+///
+/// Python equivalent:
+///   func = cloudpickle.loads(func_obj)
+///   result = func(*cloudpickle.loads(args))
+///   return cloudpickle.dumps(result)
+pub async fn execute_python_task(func_obj: Bytes, args: Bytes) -> PyResult<Bytes> {
+    Python::attach(|py| {
+        let cloudpickle = py.import("cloudpickle")?;
+
+        // func = cloudpickle.loads(func_obj)
+        let func = cloudpickle.call_method1("loads", (PyBytes::new(py, &func_obj),))?;
+
+        // args = cloudpickle.loads(args)
+        // args must be a tuple on the Python side: cloudpickle.dumps((arg1, arg2, ...))
+        let args_tuple = cloudpickle
+            .call_method1("loads", (PyBytes::new(py, &args),))?
+            .cast_into::<PyTuple>()?;
+
+        // result = func(*args)
+        let result = func.call1(&args_tuple)?;
+
+        // return cloudpickle.dumps(result)
+        cloudpickle
+            .call_method1("dumps", (result,))?
+            .extract::<Vec<u8>>()
+            .map(Bytes::from)
+    })
 }

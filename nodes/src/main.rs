@@ -4,7 +4,6 @@
 mod client;
 mod network;
 mod run;
-mod serialization;
 
 const SERVER_ADDR: &str = "localhost:6767";
 const PING_INTERVAL_SECS: u64 = 5;
@@ -16,7 +15,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Connecting to server at {}", SERVER_ADDR);
     
     let client = client::TandemClient::new(SERVER_ADDR.to_string());
-    client.connect().await?; //error
+    // client.connect().await?;
     
     Ok(())
 }

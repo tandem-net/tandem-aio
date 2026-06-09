@@ -371,6 +371,7 @@ dependencies = [
 name = "tandem-client"
 version = "0.1.0"
 dependencies = [
+ "bytes",
  "pyo3",
  "serde",
  "serde_json",
