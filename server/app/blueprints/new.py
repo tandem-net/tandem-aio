@@ -1,3 +1,7 @@
+"""
+This command is going to
+"""
+
 from flask import Blueprint
 
 new_bp = Blueprint('new', __name__)
