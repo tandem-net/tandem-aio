@@ -1,6 +1,9 @@
 // network.rs
 // sends and receives packets over TCP
 
+// TODO: write new packet structures based on server's expected endpoint format
+// TODO: implement HTTP client instead of raw TCP
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::time::{SystemTime, UNIX_EPOCH};
