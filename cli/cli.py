@@ -1,9 +1,9 @@
 import cmd
 import json
 import os
-from urllib.error import URLError
-from urllib.request import Request, urlopen
+import socket
 from pathlib import Path
+
 class MyInteractiveCLI(cmd.Cmd):
     prompt = 'Tandem> '
     intro = "Welcome to Tandem! type help for commands."
@@ -115,18 +115,22 @@ class MyInteractiveCLI(cmd.Cmd):
             "toml_path": app.toml_path,
         }).encode("utf-8")
 
-        request = Request(
-            "http://localhost:6767/app",
-            data=payload,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
+        try:
+            with socket.create_connection(("127.0.0.1", 6767), timeout=5) as connection:
+                connection.sendall(payload + b"\n")
+                response_body = connection.recv(4096).decode("utf-8")
+        except OSError as exc:
+            print(f"Error: Could not reach test server on port 6767: {exc}")
+            return
 
         try:
-            with urlopen(request, timeout=5) as response:
-                response_body = response.read().decode("utf-8")
-        except URLError as exc:
-            print(f"Error: Could not reach test server on port 6767: {exc}")
+            response = json.loads(response_body)
+        except json.JSONDecodeError:
+            print(f"Error: Test server returned an invalid response: {response_body}")
+            return
+
+        if response.get("status") != "ok":
+            print(f"Error: Test server rejected deploy: {response.get('message', 'unknown error')}")
             return
 
         print(f"Deployed '{app.name}' to test server")

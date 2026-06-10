@@ -1,74 +1,54 @@
-import html
 import json
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import socketserver
+import threading
 
 
-class AppTestRequestHandler(BaseHTTPRequestHandler):
-    posted_bodies = []
+HOST = "127.0.0.1"
+PORT = 6767
 
-    def render_page(self):
-        entries = "".join(
-            f"<pre>{html.escape(body)}</pre>" for body in self.posted_bodies
-        )
-        return f"""<!doctype html>
-<html>
-  <head>
-    <meta charset=\"utf-8\" />
-    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
-    <title>person-b test server</title>
-    <style>
-      body {{ font-family: Arial, sans-serif; margin: 40px; }}
-      pre {{ background: #f5f5f5; padding: 12px; border-radius: 8px; overflow-x: auto; }}
-    </style>
-  </head>
-  <body>
-    <h1>Hello World</h1>
-    <p>POST JSON to this server and the raw body will appear below.</p>
-    <h2>Received JSON</h2>
-    {entries if entries else '<p>No POST requests received yet.</p>'}
-  </body>
-</html>"""
 
-    def do_POST(self):
-        content_length = int(self.headers.get("Content-Length", 0))
-        raw_body = self.rfile.read(content_length).decode("utf-8") if content_length else ""
+class AppTestTCPServer(socketserver.ThreadingTCPServer):
+    allow_reuse_address = True
+    daemon_threads = True
 
-        self.posted_bodies.append(raw_body or "{}")
-        print(f"Received POST on {self.path}: {raw_body}")
+    def __init__(self, server_address, handler_class):
+        super().__init__(server_address, handler_class)
+        self.received_bodies = []
+        self.received_bodies_lock = threading.Lock()
 
-        response_body = self.render_page().encode("utf-8")
 
-        self.send_response(200)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Content-Length", str(len(response_body)))
-        self.end_headers()
-        self.wfile.write(response_body)
-
-    def do_GET(self):
-        if self.path == "/health":
-            response_body = json.dumps({"status": "ok"}).encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(response_body)))
-            self.end_headers()
-            self.wfile.write(response_body)
+class AppTestRequestHandler(socketserver.StreamRequestHandler):
+    def handle(self):
+        raw_body = self.rfile.readline().decode("utf-8").strip()
+        if not raw_body:
+            self.send_response("error", "empty request")
             return
 
-        response_body = self.render_page().encode("utf-8")
-        self.send_response(200)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Content-Length", str(len(response_body)))
-        self.end_headers()
-        self.wfile.write(response_body)
+        try:
+            json.loads(raw_body)
+        except json.JSONDecodeError as exc:
+            self.send_response("error", f"invalid JSON: {exc}")
+            return
 
-    def log_message(self, format, *args):
-        return
+        with self.server.received_bodies_lock:
+            self.server.received_bodies.append(raw_body)
+            total_received = len(self.server.received_bodies)
+
+        print(f"Received TCP message from {self.client_address}: {raw_body}")
+        self.send_response("ok", f"received message #{total_received}")
+
+    def send_response(self, status, message):
+        response_body = json.dumps({
+            "status": status,
+            "message": message,
+        }).encode("utf-8")
+        self.wfile.write(response_body + b"\n")
 
 
 def main():
-    server = ThreadingHTTPServer(("localhost", 6767), AppTestRequestHandler)
-    print("Test server listening on http://localhost:6767")
-    print("Open / for the page and POST JSON to append raw bodies to it")
+    server = AppTestTCPServer((HOST, PORT), AppTestRequestHandler)
+    print(f"Test server listening for TCP connections on {HOST}:{PORT}")
+    print("Send one JSON object followed by a newline to deploy an app")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
