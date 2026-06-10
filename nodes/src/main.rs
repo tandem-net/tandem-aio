@@ -3,7 +3,6 @@
 
 mod client;
 mod network;
-mod run;
 
 const SERVER_ADDR: &str = "localhost:6767";
 const PING_INTERVAL_SECS: u64 = 5;
