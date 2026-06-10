@@ -1,5 +1,5 @@
 """
-This command is going to
+# TODO decide if this is actually needed
 """
 
 from flask import Blueprint
