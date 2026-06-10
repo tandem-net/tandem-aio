@@ -3,6 +3,7 @@ import json
 import os
 import socket
 from pathlib import Path
+import random
 
 class MyInteractiveCLI(cmd.Cmd):
     prompt = 'Tandem> '
@@ -99,6 +100,7 @@ class MyInteractiveCLI(cmd.Cmd):
     
     def do_deploy_app(self,line): #port 6767
         """Deploys an app to port 6767 Usage: deploy_app <app_name>"""
+        pid = random.randint(1,100000);
         app_name = line.strip()
         if not app_name:
             print("Error: Usage: deploy_app <app_name>")
@@ -113,6 +115,7 @@ class MyInteractiveCLI(cmd.Cmd):
             "name": app.name,
             "language": app.language,
             "toml_path": app.toml_path,
+            "pid": pid,
         }).encode("utf-8")
 
         try:
