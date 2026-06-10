@@ -4,6 +4,12 @@ import os
 import socket
 from pathlib import Path
 import random
+import shutil
+
+base_path = os.path.dirname(os.path.abspath(__file__))
+toml_folder = os.path.join(base_path, "toml")
+temp_folder = os.path.join(base_path, "temp_pid")
+path = Path(temp_folder)
 
 class MyInteractiveCLI(cmd.Cmd):
     prompt = 'Tandem> '
@@ -16,9 +22,15 @@ class MyInteractiveCLI(cmd.Cmd):
         self.load_all_apps()
 
     def load_all_apps(self):
-        base_path = os.path.dirname(os.path.abspath(__file__))
-        toml_folder = os.path.join(base_path, "toml")
         
+        for item in path.iterdir():
+            try:
+                if item.is_file() or item.is_symlink():
+                    item.unlink()       # Deletes files and links inside
+                elif item.is_dir():
+                    shutil.rmtree(item)  # Deletes subfolders inside
+            except Exception as e:
+                print(f'Could not delete {item}. Error: {e}')
         if not os.path.exists(toml_folder):
             return
         
@@ -117,6 +129,24 @@ class MyInteractiveCLI(cmd.Cmd):
             "toml_path": app.toml_path,
             "pid": pid,
         }).encode("utf-8")
+
+        user_payload = {
+            "name": app.name,
+            "language": app.language,
+            "toml_path": app.toml_path,
+            "pid": pid,
+        }
+
+        try:
+            temporary = temp_folder+"\\"+app_name
+            print(temporary)
+            with open(temporary, 'w', encoding='utf-8') as json_file:
+                json.dump(user_payload, json_file, indent=4)
+                
+            print(f"Successfully added JSON to: {app_name}")
+
+        except Exception as e:
+            print(f"An error occurred: {e}")
 
         try:
             with socket.create_connection(("127.0.0.1", 6767), timeout=5) as connection:
