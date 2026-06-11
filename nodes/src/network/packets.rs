@@ -1,38 +1,47 @@
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
 use crate::client::ClientState;
 
-pub type TaskId = u64;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+pub type TaskId = String;
+
+static PACKET_COUNTER: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Packet {
     pub protocol_version: u16,
     pub packet_id: u64,
-    pub packet_type: PacketType,
-    pub data: Value,
+
+    #[serde(flatten)]
+    pub packet: PacketType,
+}
+
+impl Packet {
+    pub fn new(packet: PacketType) -> Self {
+        Self {
+            protocol_version: 1,
+            packet_id: PACKET_COUNTER.fetch_add(1, Ordering::Relaxed),
+            packet,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "packet_type", content = "data")]
 #[serde(rename_all = "snake_case")]
 pub enum PacketType {
-    Register,
-    RegisterAck,
-
-    Heartbeat,
-
-    Task,
-    TaskAck,
-
-    TaskResult,
-    TaskFailed,
-
-    Status,
-    StatusRequest,
-
-    CancelTask,
-
-    Error,
+    Register(RegisterPacket),
+    RegisterAck(RegisterAckPacket),
+    Heartbeat(HeartbeatPacket),
+    Task(TaskPacket),
+    TaskAck(TaskAckPacket),
+    TaskResult(TaskResultPacket),
+    TaskFailed(TaskFailedPacket),
+    Status(StatusPacket),
+    StatusRequest(StatusRequestPacket),
+    CancelTask(CancelTaskPacket),
+    Error(ErrorPacket),
 }
 
 //
