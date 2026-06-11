@@ -1,6 +1,7 @@
 import random
 
 ### RSA Encryptor
+
 def is_prime(a: int) -> bool:
     if a<=1:
         return False
@@ -33,16 +34,32 @@ def secret_totient():
         q = choose_primes()
     n = p*q
     totient = (p-1) * (q-1)
+    return n, totient
 
-def eucledian_algorithm():
-    x = random.randint(1,100)
-    y = random.randint(1,100)
+def eucledian_algorithm(x,y):
     print(x, y)
     while y:
         x, y = y, (x %y)
     return x
-print(eucledian_algorithm())
 
+e = 3
+n, totient = secret_totient()
+public_key_exponent = 0
+while e<totient:
+    gcd_result = eucledian_algorithm(e, totient)
+    if gcd_result !=1:
+        e+=2
+    else:
+        break
+
+def private_key_exponent(e, totient):
+    d = 1
+    while True:
+        if (d * e) % totient !=1:
+            d+=1
+        else:
+            return d
+    
 
 
 
