@@ -4,11 +4,12 @@
 use std::sync::{Arc, Mutex};
 use serde::{Deserialize, Serialize};
 
-use crate::network::connection::{self, Connection};
+use crate::network::{connection::{self, Connection}, packets::{Packet, PacketType, RegisterPacket}};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ClientState {
+    Disconnected,
     Idle,
     Executing,
     Error,
@@ -25,18 +26,35 @@ impl TandemClient {
     pub fn new(server_addr: String) -> Self {
         TandemClient {
             server_addr,
-            state: Arc::new(Mutex::new(ClientState::Idle)),
+            state: Arc::new(Mutex::new(ClientState::Disconnected)),
             connection: None,
         }
     }
     
     pub async fn connect(&mut self) {
         self.connection = Some(Connection::new(self.server_addr.clone()));
-        if let Some(conn) = &mut self.connection {
-            conn.connect().await;
+        if let Some(connection) = &mut self.connection {
+            match connection.connect().await {
+                Ok(_) => {
+                    println!("Connected to server successfully.");
+                    self.state = Arc::new(Mutex::new(ClientState::Idle));
+                    let register_packet = PacketType::Register(RegisterPacket {
+                        client_id: "client123".to_owned(),
+                        hostname: "testmachine".to_string(),
+                        cpu_cores: 4,
+                        memory_bytes: 16 * 1024 * 1024 * 1024,
+                        gpu_name: None,
+                        gpu_memory_bytes: None,
+                        python_version: "realpyversion".to_string(),
+                        client_version: "clientversionidk".to_string(),
+                    });
+                    connection.send_packet_type(register_packet).await;
+                },
+                Err(e) => eprintln!("Failed to connect to server: {}", e),
+            }
         }
     }
-    // TODO: Implement connection setup, client loop, task handling logic
+    // TODO: Implement client loop, task handling logic
     // module network; handles HTTP connection stuff
     // module run; handles deserialization, execution, and serialization of Python tasks
     // module main initializes the client
