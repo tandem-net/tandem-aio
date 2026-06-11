@@ -23,6 +23,14 @@ pub struct TandemClient {
 }
 
 impl TandemClient {
+    pub fn get_state(&self) -> ClientState {
+        self.state.lock().unwrap().clone()
+    }
+
+    pub fn get_connection(&mut self) -> Option<&mut Connection> {
+        self.connection.as_mut()
+    }
+
     pub fn new(server_addr: String) -> Self {
         TandemClient {
             server_addr,
@@ -43,8 +51,8 @@ impl TandemClient {
                         hostname: "testmachine".to_string(),
                         cpu_cores: 4,
                         memory_bytes: 16 * 1024 * 1024 * 1024,
-                        gpu_name: None,
-                        gpu_memory_bytes: None,
+                        gpu_name: Some("pee".to_owned()),
+                        gpu_memory_bytes: Some(8 * 1024 * 1024 * 1024),
                         python_version: "realpyversion".to_string(),
                         client_version: "clientversionidk".to_string(),
                     }));
