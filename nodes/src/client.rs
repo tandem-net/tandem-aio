@@ -4,7 +4,7 @@
 use std::sync::{Arc, Mutex};
 use serde::{Deserialize, Serialize};
 
-use crate::network::{connection::{self, Connection}, packets::{Packet, PacketType, RegisterPacket}};
+use crate::network::{connection::Connection, packets::{Packet, PacketType, RegisterPacket}};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -38,7 +38,7 @@ impl TandemClient {
                 Ok(_) => {
                     println!("Connected to server successfully.");
                     self.state = Arc::new(Mutex::new(ClientState::Idle));
-                    let register_packet = PacketType::Register(RegisterPacket {
+                    let register_packet = Packet::new(PacketType::Register(RegisterPacket {
                         client_id: "client123".to_owned(),
                         hostname: "testmachine".to_string(),
                         cpu_cores: 4,
@@ -47,8 +47,11 @@ impl TandemClient {
                         gpu_memory_bytes: None,
                         python_version: "realpyversion".to_string(),
                         client_version: "clientversionidk".to_string(),
-                    });
-                    connection.send_packet_type(register_packet).await;
+                    }));
+                    match connection.send_packet(register_packet).await {
+                        Ok(_) => println!("Sent registration packet to server."),
+                        Err(e) => eprintln!("Failed to send registration packet: {}", e),
+                    }
                 },
                 Err(e) => eprintln!("Failed to connect to server: {}", e),
             }
