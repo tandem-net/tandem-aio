@@ -42,10 +42,6 @@ impl Connection {
         Ok(())
     }
 
-    pub async fn send_packet_type(&mut self, packet_type: PacketType) {
-        self.send_packet(Packet::new(packet_type));
-    }
-
     pub async fn send_packet(&mut self, packet: Packet) -> Result<(), Error> {
         if !matches!(self.status, ConnectionStatus::Connected) {
             eprintln!("Cannot send packet: not connected");
