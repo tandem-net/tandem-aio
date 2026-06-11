@@ -2,7 +2,7 @@ use futures_util::SinkExt;
 use tokio::net::TcpStream;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async, tungstenite::{Error, Message}};
 
-use crate::network::packets::{Packet, PacketType};
+use crate::network::packets::Packet;
 
 pub enum ConnectionStatus {
     Disconnected,
@@ -33,7 +33,7 @@ impl Connection {
         let (stream, _) = match connect_async(url).await {
             Ok(result) => result,
             Err(e) => {
-                self.status = ConnectionStatus::Error(e.to_string());
+                self.status = ConnectionStatus::Error(format!("Connection error: {}", e));
                 return Err(e);
             }
         };
@@ -44,7 +44,11 @@ impl Connection {
 
     pub async fn send_packet(&mut self, packet: Packet) -> Result<(), Error> {
         if !matches!(self.status, ConnectionStatus::Connected) {
-            eprintln!("Cannot send packet: not connected");
+            if let ConnectionStatus::Error(err) = &self.status {
+                eprintln!("Cannot send packet: not connected. Last error: {}", err);
+            } else {
+                eprintln!("Cannot send packet: not connected");
+            }
             return Err(Error::AlreadyClosed);
         }
 
