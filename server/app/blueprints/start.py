@@ -2,6 +2,7 @@
 Start the Tandem app, create the Process ID and Task IDs.
 Receive TOML and CloudPickle files.
 
+*TIDs are not used by Mock-1. Currently, entire project is sent.
 """
 
 from flask import Blueprint, request, jsonify
