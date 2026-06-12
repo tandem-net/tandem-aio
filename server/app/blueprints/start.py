@@ -2,16 +2,17 @@
 Start the Tandem app, create the Process ID and Task IDs.
 Receive TOML and CloudPickle files.
 
-*TIDs are not used by Mock-1. Currently, entire project is sent.
+*TIDs are not used by Mock-1. Currently, entire process is sent.
 """
 
 from flask import Blueprint, request, jsonify
 
 from app.extensions import redis_client
+from app.utils.toml_reader import parse_toml_string, get_relevant
 
 start_bp = Blueprint('start', __name__)
 
-@start_bp.route('/start', methods=['POST'])
+@start_bp.route('/', methods=['POST'])
 def start():
 
     """
@@ -29,7 +30,8 @@ def start():
         return jsonify({'error': 'Missing TOML config file'}), 400
     
     toml_file = request.files['toml_file']
-    toml_content = toml_file.read().decode('utf-8')
+    parsed = parse_toml_string(toml_file)
+    relevant = get_relevant(parsed)
     pickle_files = request.files.getlist('pickle_files')
 
     if not pickle_files:
