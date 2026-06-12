@@ -7,8 +7,7 @@ mod client;
 mod network;
 
 const SERVER_ADDR: &str = "127.0.0.1:6767";
-const PING_INTERVAL_SECS: u64 = 5;
-const BUFFER_SIZE: usize = 8192;
+const PING_INTERVAL_SECS: u8 = 5;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
