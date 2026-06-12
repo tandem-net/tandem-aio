@@ -1,9 +1,13 @@
-"""Deploy blueprint: generate a unique hex slug, cache in Redis,
-and persist a record in the SQLite database via SQLAlchemy."""
+"""
+
+Create a unique PID / slug and save it to an sqlalchemy db.
+
+"""
 
 from flask import Blueprint, request, jsonify
 from app.extensions import db
 from app.models import Deployment
+from app.utils.toml_reader import parse_toml_string, extract_name, get_relevant
 import secrets
 
 deploy_bp = Blueprint('deploy', __name__)
@@ -16,8 +20,19 @@ def deploy():
     deployment to db.
     """
 
-    data = request.get_json() or {}
-    name = data.get('name')
+    data = request.get_json(silent=True) or {}
+
+    name = None
+
+    # toml file sent; default
+    if 'toml_file' in request.files:
+        toml_file = request.files['toml_file']
+        parsed = parse_toml_string(toml_file)
+        name = extract_name(parsed)
+
+    # Fallback to JSON
+    if not name:
+        name = data.get('name')
 
     if not name:
         return jsonify({'error': 'Name is required'})
