@@ -23,6 +23,8 @@ class MyInteractiveCLI(cmd.Cmd):
         self.load_all_apps()
 
     def load_all_apps(self):
+        if not os.path.exists(temp_folder):
+            os.makedirs(temp_folder)
         
         for item in path.iterdir():
             try:
