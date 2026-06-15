@@ -3,13 +3,6 @@ from typing import Any
 
 
 def parse_toml_string(s: Any) -> dict:
-    """Parse TOML input and return a dict.
-
-    Accepts a string, bytes, or a file-like object (anything with a
-    `read()` method, e.g. Flask `FileStorage`). If a file-like is passed
-    we read and decode it here so callers (like the CLI) don't need to
-    send the TOML text themselves.
-    """
     # file-like object (Flask's FileStorage, open file, etc.)
     if hasattr(s, 'read'):
         raw = s.read()
@@ -26,11 +19,6 @@ def parse_toml_string(s: Any) -> dict:
 
 
 def extract_name(parsed: dict) -> str | None:
-    """Try common locations for a package/app name in TOML.
-
-    Looks in (in order): top-level `name`, `[app].name`, `[project].name`,
-    `[tool.poetry].name`, `[package].name`.
-    """
     if not isinstance(parsed, dict):
         return None
 
@@ -111,5 +99,35 @@ def get_relevant(parsed: dict) -> dict:
     lang = extract_language(parsed)
     if lang:
         out['language'] = lang
+
+    tandem = parsed.get('tandem') if isinstance(parsed.get('tandem'), dict) else None
+
+    def _find_key(k: str):
+        if tandem and isinstance(tandem.get(k), str):
+            return tandem.get(k)
+
+        # check app table
+        app = parsed.get('app')
+        if isinstance(app, dict) and isinstance(app.get(k), str):
+            return app.get(k)
+
+        if isinstance(parsed.get(k), str):
+            return parsed.get(k)
+
+        return None
+
+    run_cmd = _find_key('run')
+    install_cmd = _find_key('install')
+    run_script = _find_key('run_script')
+    install_script = _find_key('install_script')
+
+    if run_cmd:
+        out['run'] = run_cmd
+    if install_cmd:
+        out['install'] = install_cmd
+    if run_script:
+        out['run_script'] = run_script
+    if install_script:
+        out['install_script'] = install_script
 
     return out
