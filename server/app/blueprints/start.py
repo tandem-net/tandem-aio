@@ -8,7 +8,8 @@ Receive TOML and CloudPickle files.
 from flask import Blueprint, request, jsonify
 
 from app.extensions import redis_client
-from app.utils.toml_reader import parse_toml_string, get_relevant
+from app.utils.toml_reader import parse_toml_string, get_relevant, extract_name
+import json
 
 start_bp = Blueprint('start', __name__)
 
@@ -32,6 +33,7 @@ def start():
     toml_file = request.files['toml_file']
     parsed = parse_toml_string(toml_file)
     relevant = get_relevant(parsed)
+    name = extract_name(parsed)
     pickle_files = request.files.getlist('pickle_files')
 
     if not pickle_files:
@@ -47,5 +49,6 @@ def start():
     
     return jsonify({
         'message': 'Start Success',
+        'name': name,
         'pickles_received': len(pickle_files)
     }), 200
