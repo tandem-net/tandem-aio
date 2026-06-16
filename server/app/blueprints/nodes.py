@@ -10,7 +10,7 @@ from app.extensions import redis_client
 nodes_bp = Blueprint('nodes', __name__)
 
 # 10MB of data
-STREAM_SIZE_BYTES = 10 * 1024 * 1024
+STREAM_SIZE_BYTES = 300 * 1024 * 1024
 DUMMY_DATA = os.urandom(STREAM_SIZE_BYTES)
 
 @nodes_bp.route('/download', methods=['GET'])
@@ -32,7 +32,7 @@ def upload():
     return jsonify({'duration': duration})
 
 
-@app.route('/ping', methods=['POST'])
+@nodes_bp.route('/ping', methods=['POST'])
 def ping():
     """
     Receives the final calculated metrics from the node.
