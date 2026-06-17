@@ -64,7 +64,7 @@ const styles = StyleSheet.create({
   },
   body: {
     flexDirection: "row",
-    backgroundColor: "red",
+    backgroundColor: "lightyellow",
     height: 6/7*deviceHeight,
   },
   paragraph: {
