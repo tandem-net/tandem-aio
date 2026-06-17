@@ -1,6 +1,6 @@
 import React, { Component } from 'react';
 import ReactDOM from 'react-dom/client';
-import { Text, View, StyleSheet, TouchableHighlight, Dimensions, ScrollView } from 'react-native-web';
+import { Text, View, StyleSheet, TouchableHighlight, Dimensions, ScrollView, Image } from 'react-native-web';
 
 const deviceHeight = Dimensions.get('window').height;
 const deviceWidth = Dimensions.get('window').width;
@@ -10,6 +10,7 @@ export default class App extends Component {
     return (
       <View style={styles.container}>
         <View style={styles.topBar}>
+          <Image source={require('./assets/logo513.png')} style={styles.logoImage} />
           <View style={styles.logoBox}>
             <Text style={styles.logo}>TANDEM</Text>
           </View>
@@ -64,7 +65,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
   },
   logoBox: {
-    width: deviceWidth / 2,
+    width: deviceWidth / 2.5,
     alignItems: 'flex-start',
     paddingLeft: 20,
   },
