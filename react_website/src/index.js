@@ -10,7 +10,7 @@ export default class App extends Component {
     return (
       <View style={styles.container}>
         <View style={styles.topBar}>
-          <Image source={require('./assets/logo513.png')} style={styles.logoImage} />
+          <View> </View>
           <View style={styles.logoBox}>
             <Text style={styles.logo}>TANDEM</Text>
           </View>
@@ -24,11 +24,18 @@ export default class App extends Component {
           </View>
         </View>
 
-        <ScrollView contentContainerStyle={styles.scrollContainer}>
-          <View style={styles.card}>
-            <Text style={styles.paragraph}>Welcome to Tandem!</Text>
+
+        <View style={styles.body}> 
+          <View style={styles.nav}>
           </View>
-        </ScrollView>
+          <ScrollView contentContainerStyle={styles.scrollContainer}>
+            <View style={styles.card}>
+              <Text style={styles.paragraph}>Welcome to Tandem!</Text>
+            </View>
+          </ScrollView>
+        </View>
+
+
       </View>
     );
   }
@@ -48,6 +55,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingBottom: 24,
     width: deviceWidth,
+  },
+  nav: {
+    backgroundColor: "yellow",
+    height: 6/7*deviceHeight,
+    width: 2/7*deviceWidth,
+    flexDirection: "column",
+  },
+  body: {
+    flexDirection: "row",
+    backgroundColor: "red",
+    height: 6/7*deviceHeight,
   },
   paragraph: {
     margin: 24,
@@ -90,9 +108,10 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   card: {
-    width: deviceWidth * 0.9,
+    width: deviceWidth * 0.9 * 5/7,
     marginTop: 20,
     padding: 24,
+    marginLeft: 0,
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
     alignItems: 'center',
