@@ -33,6 +33,30 @@ export default class App extends Component {
             >
               <Text style={styles.navButton}>Press me!</Text>
             </TouchableHighlight>
+            <TouchableHighlight
+              style={styles.touchableButton2}
+              onPress={() => window.alert('Alert Message!')}
+            >
+              <Text style={styles.navButton}>Press me!</Text>
+            </TouchableHighlight>
+            <TouchableHighlight
+              style={styles.touchableButton2}
+              onPress={() => window.alert('Alert Message!')}
+            >
+              <Text style={styles.navButton}>Press me!</Text>
+            </TouchableHighlight>
+            <TouchableHighlight
+              style={styles.touchableButton2}
+              onPress={() => window.alert('Alert Message!')}
+            >
+              <Text style={styles.navButton}>Press me!</Text>
+            </TouchableHighlight>
+            <TouchableHighlight
+              style={styles.touchableButton2}
+              onPress={() => window.alert('Alert Message!')}
+            >
+              <Text style={styles.navButton}>Press me!</Text>
+            </TouchableHighlight>
           </View>
           <ScrollView contentContainerStyle={styles.scrollContainer}>
             <View style={styles.card}>
