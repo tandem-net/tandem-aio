@@ -27,6 +27,12 @@ export default class App extends Component {
 
         <View style={styles.body}> 
           <View style={styles.nav}>
+                        <TouchableHighlight
+              style={styles.touchableButton2}
+              onPress={() => window.alert('Alert Message!')}
+            >
+              <Text style={styles.navButton}>Press me!</Text>
+            </TouchableHighlight>
           </View>
           <ScrollView contentContainerStyle={styles.scrollContainer}>
             <View style={styles.card}>
@@ -54,12 +60,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingBottom: 24,
-    width: deviceWidth,
+    width: deviceWidth * 4.5 / 7,
   },
   nav: {
     backgroundColor: "yellow",
     height: 6/7*deviceHeight,
-    width: 2/7*deviceWidth,
+    width: 2.5/7*deviceWidth,
     flexDirection: "column",
   },
   body: {
@@ -98,9 +104,19 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   touchableButton: {
-    padding: 10,
+    paddingTop: 10,
+    paddingBottom: 10,
+    paddingLeft: 30,
+    paddingRight: 30,
     backgroundColor: '#974B00',
     borderRadius: 8,
+  },
+  touchableButton2: {
+    padding: 5,
+    margin: 5,
+    backgroundColor: '#974B00',
+    borderRadius: 8,
+    alignItems: "center",
   },
   navButton: {
     fontSize: 18,
@@ -108,8 +124,8 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   card: {
-    width: deviceWidth * 0.9 * 5/7,
-    marginTop: 20,
+    width: deviceWidth * 0.9 * 4.5/7,
+    marginTop: 12,
     padding: 24,
     marginLeft: 0,
     backgroundColor: '#FFFFFF',
