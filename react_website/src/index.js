@@ -1,50 +1,29 @@
 import React, { Component } from 'react';
 import ReactDOM from 'react-dom/client';
-import {Text, View, StyleSheet, Image, TextInput, ImageBackground, TouchableHighlight, Alert, Dimensions, ScrollView } from 'react-native-web';
+import { Text, View, StyleSheet, TouchableHighlight, Dimensions, ScrollView } from 'react-native-web';
 
-let deviceHeight = Dimensions.get('window').height;
-let deviceWidth = Dimensions.get('window').width;
+const deviceHeight = Dimensions.get('window').height;
+const deviceWidth = Dimensions.get('window').width;
 
 export default class App extends Component {
   render() {
-<<<<<<< HEAD
-    // add all website content inside scrollview so it's not just a static page.
     return (
-=======
-    return ( // add all website content inside scrollview so it's not just a static page.
-/*
- _____               _                
-|_   _|_ _ _ __   __| | ___ _ __ ___   
-  | |/ _` | '_ \ / _` |/ _ \ '_ ` _ \  
-  | | (_| | | | | (_| |  __/ | | | | |  
-  |_|\__,_|_| |_|\__,_|\___|_| |_| |_| 
-*/
-
->>>>>>> c3b84a2651a6c8a7b97ab7d0ca28394e6cc0fd79
-      <View contentContainerStyle={styles.container}>
+      <View style={styles.container}>
         <View style={styles.topBar}>
-          {/* add top bar content here, such as logo and navigation links */}
-
-            <View style={styles.logoBox}>
-              <Text style={styles.logo}>TANDEM</Text>
-            </View>
-            
-            <View style={styles.navLinks}>
-              <View>
-                <TouchableHighlight
-                      style={styles.touchableButton}
-                      onPress={() => {
-                          alert('Alert Message!');
-                      }}
-                  >
-                      <Text style={styles.navButton}>
-                          Press me!
-                      </Text>
-                  </TouchableHighlight>
-              </View>
-            </View>
+          <View style={styles.logoBox}>
+            <Text style={styles.logo}>TANDEM</Text>
+          </View>
+          <View style={styles.navLinks}>
+            <TouchableHighlight
+              style={styles.touchableButton}
+              onPress={() => window.alert('Alert Message!')}
+            >
+              <Text style={styles.navButton}>Press me!</Text>
+            </TouchableHighlight>
+          </View>
         </View>
-        <ScrollView>
+
+        <ScrollView contentContainerStyle={styles.scrollContainer}>
           <View style={styles.card}>
             <Text style={styles.paragraph}>Welcome to Tandem!</Text>
           </View>
@@ -63,6 +42,12 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     height: deviceHeight,
   },
+  scrollContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingBottom: 24,
+    width: deviceWidth,
+  },
   paragraph: {
     margin: 24,
     fontSize: 28,
@@ -73,22 +58,18 @@ const styles = StyleSheet.create({
   topBar: {
     justifyContent: 'center',
     alignItems: 'center',
-<<<<<<< HEAD
-    backgroundColor: '#001F3D',
-=======
     backgroundColor: '#dba400',
->>>>>>> c3b84a2651a6c8a7b97ab7d0ca28394e6cc0fd79
     width: deviceWidth,
-    height: deviceHeight/7,
+    height: deviceHeight / 7,
     flexDirection: 'row',
   },
   logoBox: {
-    width: deviceWidth/2,
+    width: deviceWidth / 2,
     alignItems: 'flex-start',
     paddingLeft: 20,
   },
   navLinks: {
-    width: deviceWidth/2,
+    width: deviceWidth / 2,
     alignItems: 'flex-end',
     paddingRight: 20,
   },
@@ -97,10 +78,23 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
+  touchableButton: {
+    padding: 10,
+    backgroundColor: '#974B00',
+    borderRadius: 8,
+  },
   navButton: {
     fontSize: 18,
     color: '#FFFFFF',
     fontWeight: 'bold',
+  },
+  card: {
+    width: deviceWidth * 0.9,
+    marginTop: 20,
+    padding: 24,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    alignItems: 'center',
   },
 });
 
