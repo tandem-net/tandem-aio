@@ -11,7 +11,7 @@ async fn main() {
     
     match tasks::download_task(client.clone(), download).await {
         Ok(()) => println!("Downloaded successfully!"),
-        Err(e) => println!("Error: {}", e),
+        Err(e) => println!("Error: {}", e), // wsg shagmar
     }
 
     match tasks::upload_task(client.clone(), upload, 65564).await {
