@@ -1,6 +1,6 @@
 import React, { Component } from 'react';
 import ReactDOM from 'react-dom/client';
-import { Text, View, StyleSheet, TouchableHighlight, Dimensions, ScrollView, Image } from 'react-native-web';
+import { Text, View, StyleSheet, TouchableHighlight, Dimensions, ScrollView } from 'react-native-web';
 
 const deviceHeight = Dimensions.get('window').height;
 const deviceWidth = Dimensions.get('window').width;
