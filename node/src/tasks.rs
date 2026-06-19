@@ -5,40 +5,53 @@ use serde_json::json;
 
 use crate::measure;
 
+#[derive(Serialize, Clone, Debug)]
+pub struct Metrics {
+    pub latency: f32,
+    pub download: f32,
+    pub upload: f32,
+}
+
 // Internet slop
-pub fn download_task(client: Client, url: impl Into<String>) -> BoxFuture<'static, Result<(), Error>> {
+pub fn download_task(client: Client, url: impl Into<String>) -> BoxFuture<'static, Result<f32, Error>> {
     let url = url.into();
 
     Box::pin(async move {
         let (bytes, duration) = measure::measure_download(client, &url).await?;
         let mb = bytes as f64 / (1024.0 * 1024.0);
-        println!("downloaded {:.2} MB in {:.2}s ({:.2} MB/s)", mb, duration, mb / duration);
-        Ok(())
+        let speed = (mb / duration) as f32;
+        
+        println!("downloaded {:.2} MB in {:.2}s ({:.2} MB/s)", mb, duration, speed);
+
+        Ok(speed)
     })
 }
 
-pub fn upload_task(client: Client, url: impl Into<String>, bytes: usize) -> BoxFuture<'static, Result<(), Error>> {
+pub fn upload_task(client: Client, url: impl Into<String>, bytes: usize) -> BoxFuture<'static, Result<f32, Error>> {
     let url = url.into();
 
     Box::pin(async move {
         let duration = measure::measure_upload(client, &url, bytes, 65536).await?;
         let mb = bytes as f64 / (1024.0 * 1024.0);
+        let speed = (mb / duration) as f32;
+        
+        println!("uploaded {:.2} MB in {:.2}s ({:.2} MB/s", mb, duration, speed);
 
-        println!("uploaded {:.2} MB in {:.2}s ({:.2} MB/s", mb, duration, mb / duration);
-        Ok(())
+        Ok(speed)
     })
 }
 
-
-
 // Node ID
-
 fn save_node_id(node_id: &str) -> Result<(), Error> {
-    std::fs::write("node_id.txt", node_id).map_err(|e| Error::from(e))
+    std::fs::write("node_id.txt", node_id).map_err(|_| {
+        Client::new().get("").build().unwrap_err()
+    })
 }
 
 fn load_node_id() -> Result<String, Error> {
-    std::fs::read_to_string("node_id.txt").map_err(|e| Error::from(e))
+    std::fs::read_to_string("node_id.txt").map_err(|_| {
+        Client::new().get("").build().unwrap_err()
+    })
 }
 
 pub fn register<T> (client: Client, url: impl Into<String>, data: T) -> BoxFuture<'static, Result<(), Error>>
@@ -46,12 +59,12 @@ where T: Serialize + Send + 'static {
     let url = url.into();
 
     Box::pin(async move {
-        let response = client.post(&url)
+        let _response = client.post(&url)
             .json(&data)
             .send()
             .await?;
         
-        let node_id = response.text().await?;
+        let node_id = _response.text().await?;
         save_node_id(&node_id)?;
         
         Ok(())
@@ -72,7 +85,7 @@ where T: Serialize + Send + 'static {
     }
 
     Box::pin(async move {
-        let response = client.post(&url)
+        let _response = client.post(&url)
             .json(&json_data)
             .send()
             .await?;
@@ -91,11 +104,8 @@ where T: Serialize + Send + 'static {
             .send()
             .await?;
         
-        if !response.status().is_success() {
-            return Err(Error::new(reqwest::StatusCode::from_u16(response.status().as_u16()).unwrap(), "non-success status"));
-        }
+        response.error_for_status()?;
         
         Ok(())
     })
 }
-
