@@ -9,7 +9,7 @@ from app.extensions import redis_client
 
 nodes_bp = Blueprint('nodes', __name__)
 
-# 10MB of data
+# 300MB of data
 STREAM_SIZE_BYTES = 300 * 1024 * 1024
 DUMMY_DATA = os.urandom(STREAM_SIZE_BYTES)
 
