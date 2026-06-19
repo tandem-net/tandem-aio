@@ -1,4 +1,4 @@
-use reqwest::{Client, Error};
+use reqwest::{Client, Error, Body};
 use futures_util::StreamExt;
 use std::time::Instant;
 
@@ -9,16 +9,14 @@ pub async fn measure_download(client: Client, url: &str) -> Result<(u64, f64), E
         .send()
         .await?;
 
-    if !response.status().is_success() {
-        return Err(format!("Error: {}", response.status()))
-    }
+    let response = response.error_for_status()?;
 
     let mut download: u64 = 0;
     let mut stream = response.bytes_stream();
 
     while let Some(chunk_result) = stream.next().await {
         let chunk = chunk_result?;
-        download += chunk.len as u64;
+        download += chunk.len() as u64;
     }
 
     let elapsed = start_time.elapsed();
@@ -29,11 +27,11 @@ pub async fn measure_download(client: Client, url: &str) -> Result<(u64, f64), E
         let speed_mb = mb / duration;
     }
 
-    Ok((total, dur))
+    Ok((download, duration))
 
 }
 
-async fn measure_upload(client: Client, url: &str, total_bytes: usize, chunk_size: usize) -> Result<f64, Error> {
+pub async fn measure_upload(client: Client, url: &str, total_bytes: usize, chunk_size: usize) -> Result<f64, Error> {
     let mb = 1024 * 1024;
     let data = vec![0u8; 50 * mb];
     let body = Body::from(data);
@@ -56,5 +54,5 @@ async fn measure_upload(client: Client, url: &str, total_bytes: usize, chunk_siz
 
     let elapsed = start.elapsed().as_secs_f64();
 
-    Ok((elapsed))
+    Ok(elapsed)
 }
