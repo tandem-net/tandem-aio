@@ -1,4 +1,4 @@
-use reqwest::{Client, Error, Body};
+use reqwest::{Body, Client, Error, Response};
 use futures_util::StreamExt;
 use std::time::Instant;
 
@@ -54,5 +54,19 @@ pub async fn measure_upload(client: Client, url: &str, total_bytes: usize, chunk
 
     let elapsed = start.elapsed().as_secs_f64();
 
+    Ok(elapsed)
+}
+
+pub async fn measure_latency(client: Client, url: &str, data: serde_json::Value) -> Result<f64, Error> {
+    let start = Instant::now();
+
+    let response = client.post(url)
+        .json(&data)
+        .send()
+        .await?;
+
+    let elapsed = start.elapsed().as_secs_f64();
+    let _ = response.error_for_status()?;
+    
     Ok(elapsed)
 }

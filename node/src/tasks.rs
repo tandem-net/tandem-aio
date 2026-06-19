@@ -1,6 +1,7 @@
 use futures::future::BoxFuture;
 use reqwest::{Client, Error};
 use serde::Serialize;
+use serde_json::json;
 
 use crate::measure;
 
@@ -28,10 +29,16 @@ pub fn upload_task(client: Client, url: impl Into<String>, bytes: usize) -> BoxF
     })
 }
 
-// Registering
+
+
+// Node ID
 
 fn save_node_id(node_id: &str) -> Result<(), Error> {
     std::fs::write("node_id.txt", node_id).map_err(|e| Error::from(e))
+}
+
+fn load_node_id() -> Result<String, Error> {
+    std::fs::read_to_string("node_id.txt").map_err(|e| Error::from(e))
 }
 
 pub fn register<T> (client: Client, url: impl Into<String>, data: T) -> BoxFuture<'static, Result<(), Error>>
@@ -50,3 +57,45 @@ where T: Serialize + Send + 'static {
         Ok(())
     })
 }
+
+pub fn ping<T> (client: Client, url: impl Into<String>, data: T) -> BoxFuture<'static, Result<(), Error>>
+where T: Serialize + Send + 'static {
+    let url = url.into();
+
+    let node_id = load_node_id().ok();
+    let mut json_data = serde_json::to_value(data).unwrap_or_else(|_| json!({}));
+
+    if let Some(id) = node_id {
+        if let Some(obj) = json_data.as_object_mut() {
+            obj.insert(String::from("node_id"), json!(id));
+        }
+    }
+
+    Box::pin(async move {
+        let response = client.post(&url)
+            .json(&json_data)
+            .send()
+            .await?;
+        
+        Ok(())
+    })
+}
+
+pub fn health<T> (client: Client, url: impl Into<String>, data: T) -> BoxFuture<'static, Result<(), Error>>
+where T: Serialize + Send + 'static {
+    let url = url.into();
+    
+    Box::pin(async move {
+        let response = client.post(&url)
+            .json(&data)
+            .send()
+            .await?;
+        
+        if !response.status().is_success() {
+            return Err(Error::new(reqwest::StatusCode::from_u16(response.status().as_u16()).unwrap(), "non-success status"));
+        }
+        
+        Ok(())
+    })
+}
+

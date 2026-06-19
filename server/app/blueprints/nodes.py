@@ -57,7 +57,7 @@ def ping():
     redis_client.hmset(f"node:{node_id}", metrics)
     redis_client.sadd('nodes', node_id)
 
-    return jsonify({'status': "Metrics Recorded"})
+    return jsonify({'status': "Metrics Recorded"}), 200
 
 @nodes_bp.route('/health', methods=['POST'])
 def health():
@@ -74,7 +74,7 @@ def health():
     redis_client.hset(f"node:{node_id}", 'last_seen', time.time())
     redis_client.sadd('nodes', node_id)
 
-    return jsonify({'status': "Alive"})
+    return jsonify({'status': "Alive"}), 200
 
 @nodes_bp.route('/register', methods=['POST'])
 def register():
