@@ -1,4 +1,4 @@
-use reqwest::{Body, Client, Error, Response};
+use reqwest::{Body, Client, Error};
 use futures_util::StreamExt;
 use std::time::Instant;
 
@@ -22,16 +22,10 @@ pub async fn measure_download(client: Client, url: &str) -> Result<(u64, f64), E
     let elapsed = start_time.elapsed();
     let duration = elapsed.as_secs_f64();
 
-    if duration > 0.0 {
-        let mb = download as f64 / (1024.0 * 1024.0);
-        let speed_mb = mb / duration;
-    }
-
     Ok((download, duration))
-
 }
 
-pub async fn measure_upload(client: Client, url: &str, total_bytes: usize, chunk_size: usize) -> Result<f64, Error> {
+pub async fn measure_upload(client: Client, url: &str, _total_bytes: usize, _chunk_size: usize) -> Result<f64, Error> {
     let mb = 1024 * 1024;
     let data = vec![0u8; 50 * mb];
     let body = Body::from(data);
