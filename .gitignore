@@ -27,3 +27,6 @@ target
 # Pyslop
 .venv/
 __pycache__/
+
+# Node modules
+node_modules/
