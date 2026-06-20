@@ -51,4 +51,4 @@ yarn-error.log*
 
 server/runtime/
 venv/
-cli/__pycache__/
+**/__pycache__/
