@@ -1,13 +1,11 @@
-use reqwest::{Body, Client, Error};
 use futures_util::StreamExt;
+use reqwest::{Body, Client, Error};
 use std::time::Instant;
 
 pub async fn measure_download(client: Client, url: &str) -> Result<(u64, f64), Error> {
     let start_time = Instant::now();
 
-    let response = client.get(url)
-        .send()
-        .await?;
+    let response = client.get(url).send().await?;
 
     let response = response.error_for_status()?;
 
@@ -25,8 +23,12 @@ pub async fn measure_download(client: Client, url: &str) -> Result<(u64, f64), E
     Ok((download, duration))
 }
 
-pub async fn measure_upload(client: Client, url: &str, _total_bytes: usize, _chunk_size: usize) -> Result<f64, Error> {
-    let mb = 1024 * 1024;
+pub async fn measure_upload(
+    client: Client,
+    url: &str,
+    _total_bytes: usize,
+    _chunk_size: usize,
+) -> Result<f64, Error> {
     let data = vec![0u8; _total_bytes];
     let body = Body::from(data);
 
@@ -51,16 +53,18 @@ pub async fn measure_upload(client: Client, url: &str, _total_bytes: usize, _chu
     Ok(elapsed)
 }
 
-pub async fn measure_latency(client: Client, url: &str, data: serde_json::Value) -> Result<f64, Error> {
+#[allow(dead_code)]
+pub async fn measure_latency(
+    client: Client,
+    url: &str,
+    data: serde_json::Value,
+) -> Result<f64, Error> {
     let start = Instant::now();
 
-    let response = client.post(url)
-        .json(&data)
-        .send()
-        .await?;
+    let response = client.post(url).json(&data).send().await?;
 
     let elapsed = start.elapsed().as_secs_f64();
     let _ = response.error_for_status()?;
-    
+
     Ok(elapsed)
 }
