@@ -1,14 +1,14 @@
+"""
+
+"""
+
 import cmd
-import json
 import os
-import socket
 from pathlib import Path
-import random
 import shutil
 import requests
 
 base_path = os.path.dirname(os.path.abspath(__file__))
-toml_folder = os.path.join(base_path, "toml")
 pickles_root = os.path.join(base_path, "pickles")
 temp_folder = os.path.join(base_path, "temp_pid")
 path = Path(temp_folder)
@@ -18,14 +18,12 @@ class App():
         self.name = name
         self.language = language
         base_path_local = os.path.dirname(os.path.abspath(__file__))
-        self.toml_path = os.path.join(base_path_local, "toml", f"{name}.toml")
+        self.toml_path = os.path.join(base_path_local, f"{name}.toml")
 
         # per-app pickles folder
         self.pickles_dir = os.path.join(base_path_local, "pickles", name)
 
     def is_valid(self):
-        toml_dir = os.path.dirname(self.toml_path)
-        os.makedirs(toml_dir, exist_ok=True)
         os.makedirs(self.pickles_dir, exist_ok=True)
         
         if os.path.exists(self.toml_path):
@@ -40,12 +38,11 @@ class App():
     def list_app(self):
         """List all TOML files in the toml folder."""
         list_names = []
-        toml_folder_local = os.path.dirname(self.toml_path)
-        
-        if not os.path.exists(toml_folder_local):
+        root_folder_local = os.path.dirname(self.toml_path)
+        if not os.path.exists(root_folder_local):
             return list_names
         
-        folder = Path(toml_folder_local)
+        folder = Path(root_folder_local)
         for item in folder.iterdir():
             if item.name.endswith('.toml'):
                 list_names.append(item.name)
@@ -75,12 +72,13 @@ class MyInteractiveCLI(cmd.Cmd):
                     shutil.rmtree(item)  # Deletes subfolders inside
             except Exception as e:
                 print(f'Could not delete {item}. Error: {e}')
-        if not os.path.exists(toml_folder):
+                
+        if not os.path.exists(base_path):
             return
         
-        for filename in os.listdir(toml_folder):
+        for filename in os.listdir(base_path):
             if filename.endswith('.toml'):
-                toml_path = os.path.join(toml_folder, filename)
+                toml_path = os.path.join(base_path, filename)
                 name = None
                 language = None
                 
@@ -108,15 +106,15 @@ class MyInteractiveCLI(cmd.Cmd):
         print("au revoir")
         return True  
     
-    def do_add_app(self, line):
-        """Add an app. Usage: add_app <app_name> <app_language>"""
+    def do_new(self, line):
+        """Add an app. Usage: new <app_name> <app_language>"""
         if not line:
             print("Error: Please provide an app name and language")
             return
         
         parts = line.split()
         if len(parts) < 2:
-            print("Error: Usage: add_app <app_name> <app_language>")
+            print("Error: Usage: new <app_name> <app_language>")
             return
         
         app_name = parts[0]
@@ -138,11 +136,11 @@ class MyInteractiveCLI(cmd.Cmd):
         for app in self.apps:
             print(f"  - {app.name} ({app.language})")
     
-    def do_remove_app(self,line):
-        """Removes an app Usage: remove_app <app_name>"""
+    def do_remove(self,line):
+        """Removes an app Usage: remove <app_name>"""
         app_name = line.strip()
         if not app_name:
-            print("Error: Usage: remove_app <app_name>")
+            print("Error: Usage: remove <app_name>")
             return
 
         for i, app in enumerate(self.apps):
@@ -159,13 +157,13 @@ class MyInteractiveCLI(cmd.Cmd):
 
         print(f"Error: App '{app_name}' not found")
     
-    def do_deploy_app(self, line): #port 6767
-        """Deploys an app to port 6767 Usage: deploy_app <app_name>"""
+    def do_deploy(self, line): #port 6767
+        """Deploys an app to port 6767 Usage: deploy <app_name>"""
         
         app_name = line.strip()
 
         if not app_name:
-            print("Error: Usage: deploy_app <app_name>")
+            print("Error: Usage: deploy <app_name>")
             return
 
         for i, app in enumerate(self.apps):
@@ -182,8 +180,23 @@ class MyInteractiveCLI(cmd.Cmd):
                         files = {'toml_file': (file_name, file, 'text/plain')}
                         resp = requests.post(url, files=files, timeout=5)
 
-                    print("Status:", resp.status_code)
                     print(resp.text)
+
+                    if resp.status_code == 201:
+                        try:
+                            response_data = resp.json()
+                            pid = response_data.get("pid")
+                            if pid:
+                                pid_file_path = os.path.join(temp_folder, f"{app_name}.pid")
+                                with open(pid_file_path, 'w') as pid_file:
+                                    pid_file.write(str(pid))
+                                print(f"Saved PID {pid} to {pid_file_path}")
+                            else:
+                                print("Warning: No pid key found in server response JSON")
+                        except Exception as json_err:
+                            print(f"Warning: Could not parse JSON response or save PID file: {json_err}")
+                            
+                    
                 except Exception as e:
                     print(f"Error: could not send toml file: {e}")
 
@@ -192,9 +205,7 @@ class MyInteractiveCLI(cmd.Cmd):
 
         print(f"Error: App '{app_name}' not found")
     
-    def do_start_app(self, line):
-        """Start an app. Usage: start_app <app_name> [pickle_path1 ...]"""
-
+    def do_start(self, line):
         parts = line.split()
         if not parts:
             print("Error: Usage: start_app <app_name> [pickle_path1 ...]")
@@ -217,19 +228,16 @@ class MyInteractiveCLI(cmd.Cmd):
         file_objs = []
         files = []
         try:
-            # attach toml file
             toml_f = open(app.toml_path, 'rb')
             file_objs.append(toml_f)
             files.append(('toml_file', (os.path.basename(app.toml_path), toml_f, 'text/plain')))
 
-            # If no explicit pickles given, use the app pickles folder
             if not pickle_paths:
-                default_dir = getattr(app, 'pickles', None)
-                if default_dir and os.path.isdir(default_dir):
+                default_dir = os.path.join('pickles', app_name)
+                if os.path.isdir(default_dir):
                     entries = [os.path.join(default_dir, x) for x in os.listdir(default_dir)]
                     pickle_paths = [p for p in entries if os.path.isfile(p)]
 
-            # Allow directories passed explicitly: expand them
             expanded = []
             for p in pickle_paths:
                 if os.path.isdir(p):
@@ -269,6 +277,7 @@ class MyInteractiveCLI(cmd.Cmd):
                     f.close()
                 except Exception:
                     pass
+
     def _update_toml_field(self, toml_path: str, table: str, key: str, value: str):
         """
         Update or add a key under a TOML table.
@@ -402,11 +411,11 @@ class MyInteractiveCLI(cmd.Cmd):
     def do_help(self, line):
         """Show minimal help listing: $ command ..."""
         commands = [
-            'add_app <app_name> <app_language>',
-            'remove_app <app_name>',
+            'new <app_name> <app_language>',
+            'remove <app_name>',
             'list',
-            'deploy_app <app_name>',
-            'start_app <app_name> [pickle_path1 ...]',
+            'deploy <app_name>',
+            'start <app_name> [pickle_path1 ...]',
             'set_run <app_name> <run command>',
             'set_install <app_name> <install command>',
             'set_script <app_name> <run|install> <script_path>',
