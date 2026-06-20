@@ -1,3 +1,5 @@
+use std::env::VarError::NotUnicode;
+
 use futures::future::BoxFuture;
 use reqwest::{Client, Error};
 use serde::Serialize;
@@ -64,8 +66,10 @@ where T: Serialize + Send + 'static {
             .send()
             .await?;
         
-        let node_id = _response.text().await?;
-        save_node_id(&node_id)?;
+        let json_res: serde_json::Value = _response.json().await?;
+        if let Some(node_id) = json_res.get("node_id").and_then(|v| v.as_str()) {
+            save_node_id(node_id)?;
+        }
         
         Ok(())
     })
@@ -97,10 +101,20 @@ where T: Serialize + Send + 'static {
 pub fn health<T> (client: Client, url: impl Into<String>, data: T) -> BoxFuture<'static, Result<(), Error>>
 where T: Serialize + Send + 'static {
     let url = url.into();
+
+    let node_id = load_node_id().ok();
+    let mut json_data = serde_json::to_value(data).unwrap_or_else(|_| json!({}));
+
+    if let Some(id) = node_id {
+        if let Some(obj) = json_data.as_object_mut() {
+            obj.insert(String::from("node_id"), json!(id));
+        }
+    }
+
     
     Box::pin(async move {
         let response = client.post(&url)
-            .json(&data)
+            .json(&json_data)
             .send()
             .await?;
         

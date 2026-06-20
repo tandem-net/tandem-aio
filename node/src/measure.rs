@@ -27,7 +27,7 @@ pub async fn measure_download(client: Client, url: &str) -> Result<(u64, f64), E
 
 pub async fn measure_upload(client: Client, url: &str, _total_bytes: usize, _chunk_size: usize) -> Result<f64, Error> {
     let mb = 1024 * 1024;
-    let data = vec![0u8; 50 * mb];
+    let data = vec![0u8; _total_bytes];
     let body = Body::from(data);
 
     let start = Instant::now();

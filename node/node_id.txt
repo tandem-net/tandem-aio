@@ -1,1 +1,1 @@
-{"node_id":"node_5d308e5125d9","status":"Registered"}
+node_15bb8fdf5d16

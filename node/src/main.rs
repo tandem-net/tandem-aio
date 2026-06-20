@@ -26,7 +26,8 @@ async fn main() {
         }
     };
 
-    let upload_speed = match tasks::upload_task(client.clone(), upload, 65564).await {
+    let mb = 300 * 1024 * 1024;
+    let upload_speed = match tasks::upload_task(client.clone(), upload, mb).await {
         Ok(speed) => {
             println!("Uploaded successfully!");
             speed
@@ -62,4 +63,7 @@ async fn main() {
     if let Err(e) = tasks::ping(client.clone(), ping, metrics.clone()).await {
         println!("ping failed: {}", e);
     }
+
+    println!("Latency success: {}", metrics.latency);
+    
 }

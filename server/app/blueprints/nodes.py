@@ -44,7 +44,7 @@ def ping():
     if not node_id:
         return jsonify({'error': "sorry bruzz you aren't registered / don't have a node_id"}), 400
     
-    if not redis_client.exists(f"nodes:{node_id}"):
+    if not redis_client.exists(f"node:{node_id}"):
         return jsonify({'error': "node_id not found. Please register"}), 404
     
     metrics = {
