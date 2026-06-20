@@ -47,4 +47,8 @@ node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+
 server/runtime/
+venv/
+cli/__pycache__/
