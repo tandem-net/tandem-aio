@@ -6,7 +6,7 @@ import shutil
 import time
 import uuid
 
-from app.extensions import redis_client
+from app.extensions import redis_client, generate_api_key
 from app.utils.task_queue import (
     TASK_LEASE_SECONDS,
     claim_task_for_node,
@@ -21,10 +21,12 @@ from flask import Blueprint, Response, jsonify, request, send_file
 
 nodes_bp = Blueprint("nodes", __name__)
 
-# 300MB of data for crude bandwidth benchmarks.
+# 300MB
 STREAM_SIZE_BYTES = 300 * 1024 * 1024
 DUMMY_DATA = os.urandom(STREAM_SIZE_BYTES)
 
+
+# NODE ID SLOP
 
 def _extract_node_id() -> str:
     header_node_id = (request.headers.get("X-Node-Id") or "").strip()
@@ -57,6 +59,8 @@ def _require_node_auth():
 
     return node_id, node, None
 
+
+# ROUTE SLOP
 
 @nodes_bp.route("/download", methods=["GET"])
 def download():
@@ -263,3 +267,7 @@ def submit_task_result(tid: str):
             "counts": summary["counts"],
         }
     ), 200
+
+if __name__ == '__main__':
+    api_key = generate_api_key()
+    print(api_key)
