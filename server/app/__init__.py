@@ -4,16 +4,13 @@ import pathlib
 from dotenv import load_dotenv
 
 from flask import Flask
-from flask_api_key import APIKeyManager
 
 from app.extensions import db, redis_client
 
 load_dotenv()
-key_manager = APIKeyManager()
 
 def create_app():
     app = Flask(__name__)
-    key_manager.init_app(app)
 
     database_uri = os.environ.get("DATABASE_URL")
     if not database_uri:

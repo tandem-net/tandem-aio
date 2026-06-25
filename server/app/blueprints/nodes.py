@@ -6,7 +6,9 @@ import shutil
 import time
 import uuid
 
-from app.extensions import redis_client, generate_api_key
+from app.utils.api import encrypt_api_key, generate_api_key
+
+from app.extensions import redis_client
 from app.utils.task_queue import (
     TASK_LEASE_SECONDS,
     claim_task_for_node,
@@ -132,6 +134,9 @@ def register():
     node_id = f"node_{uuid.uuid4().hex[:12]}"
     node_token = secrets.token_urlsafe(32)
     timestamp = str(time.time())
+
+    raw_api_key: str = generate_api_key()
+    api_key: str = encrypt_api_key(raw_api_key)
 
     metrics = {
         "node_token": node_token,
