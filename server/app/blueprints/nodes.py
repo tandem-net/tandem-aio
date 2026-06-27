@@ -140,9 +140,7 @@ def register():
 
     metrics = {
         "node_token": node_token,
-        "last_seen": timestamp,
-        "registered_at": timestamp,
-        "current_task": "",
+        "last_seen": timestamp
     }
 
     for field in ("latency", "download", "upload"):

@@ -48,6 +48,7 @@ def create_app():
     from app.blueprints.nodes import nodes_bp
     from app.blueprints.start import start_bp
     from app.blueprints.stop import stop_bp
+    from app.blueprints.api import api_bp
 
     app.register_blueprint(index_bp, url_prefix="/")
     app.register_blueprint(start_bp, url_prefix="/start")
@@ -55,6 +56,7 @@ def create_app():
     app.register_blueprint(new_bp, url_prefix="/new")
     app.register_blueprint(deploy_bp, url_prefix="/deploy")
     app.register_blueprint(nodes_bp, url_prefix="/nodes")
+    app.register_blueprint(api_bp, url_prefix="/api/v1")
 
     with app.app_context():
         import importlib
