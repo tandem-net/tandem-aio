@@ -30,3 +30,5 @@ class User(db.Model):
 
     def to_dict(self):
         return { 'username': self.username }
+
+# another zatar comment: errrrrrdeeeeeeeeeeer
