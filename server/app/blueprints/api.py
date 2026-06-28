@@ -4,9 +4,12 @@ from werkzeug.security import generate_password_hash
 from sqlalchemy.exc import IntegrityError
 
 from extensions import db
-from models import User
+from models import User, UserAPI
 
 api_bp = Blueprint("api", __name__)
+
+def _verify_credentials(username: str, password: str) -> bool:
+    pass
 
 @api_bp.route("/register", methods=["POST"])
 def register():
@@ -45,3 +48,14 @@ def register():
         
     
     return jsonify({"status": "success"}), 201
+
+@api_bp.route("/generate_api", methods=['POST'])
+def generate_api():
+    data = request.get_json(silent = True) or {}
+
+    username = data.get("username")
+    password = data.get("password")
+
+    
+    
+    return jsonify({"status": "success"})
