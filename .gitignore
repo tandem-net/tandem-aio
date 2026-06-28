@@ -36,6 +36,7 @@ node_modules/
 # Testing & build
 /coverage
 /build
+/frontend/build/
 
 # Environment variables
 .env.local

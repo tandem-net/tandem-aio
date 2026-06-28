@@ -29,7 +29,7 @@ export default class App extends Component {
 
         <View style={styles.content}>
           <Text style={styles.title}>Welcome to Tandem</Text>
-          <Text style={styles.subtitle}>A simple starting point for your app.</Text>
+          <Text style={styles.subtitle}>Tandem is so cool</Text>
         </View>
       </View>
     );
