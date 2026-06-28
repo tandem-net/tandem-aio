@@ -1,5 +1,7 @@
+import json
+
 import requests
-from demo_deploy import deploy_demo
+from demo_deploy import auth_headers, deploy_demo
 
 DEFAULT_BASE_URL = "http://localhost:6767"
 
@@ -11,7 +13,7 @@ def start_demo(base_url=DEFAULT_BASE_URL, name="demo-start", verify=True):
     if deploy_status != 201:
         raise RuntimeError(f"Deploy failed before start demo: {deploy_text}")
 
-    deploy_payload = requests.models.complexjson.loads(deploy_text)
+    deploy_payload = json.loads(deploy_text)
     pid = deploy_payload["pid"]
     url = f"{base_url.rstrip('/')}/start/"
     toml_text = f'[app]\nname = "{name}"\nlanguage = "python"\n'
@@ -27,7 +29,14 @@ def start_demo(base_url=DEFAULT_BASE_URL, name="demo-start", verify=True):
         ("toml_file", ("config.toml", toml_text.encode("utf-8"), "text/plain")),
     ]
 
-    resp = requests.post(url, data={"pid": pid}, files=files, timeout=10, verify=verify)
+    resp = requests.post(
+        url,
+        data={"pid": pid},
+        files=files,
+        headers=auth_headers(),
+        timeout=10,
+        verify=verify,
+    )
     print("Status:", resp.status_code)
     print(resp.text)
     return resp.status_code, resp.text

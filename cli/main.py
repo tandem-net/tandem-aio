@@ -14,6 +14,7 @@ LIMIT = int(os.environ.get("TANDEM_LIMIT", "10000"))
 NUM_CHUNKS = int(os.environ.get("TANDEM_NUM_CHUNKS", "10"))
 POLL_INTERVAL_SECONDS = float(os.environ.get("TANDEM_POLL_INTERVAL", "0.5"))
 RESULT_TIMEOUT_SECONDS = int(os.environ.get("TANDEM_RESULT_TIMEOUT", "300"))
+API_KEY_ENV_VAR = "TANDEM_API_KEY"
 
 CHUNK_SIZE = max(1, LIMIT // max(1, NUM_CHUNKS))
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -23,6 +24,16 @@ PID_FILE = os.path.join(PID_DIR, f"{APP_NAME}.pid")
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(PID_DIR, exist_ok=True)
+
+
+def auth_headers(extra_headers: dict | None = None) -> dict[str, str]:
+    api_key = (os.environ.get(API_KEY_ENV_VAR) or "").strip()
+    if not api_key:
+        raise RuntimeError(f"Missing {API_KEY_ENV_VAR} environment variable")
+
+    headers = dict(extra_headers or {})
+    headers["X-API-Key"] = api_key
+    return headers
 
 
 def calculate_prime_product_range(start, end):
@@ -88,6 +99,7 @@ def ensure_deployed() -> str:
     resp = requests.post(
         f"{SERVER_URL}/deploy/",
         files={"toml_file": (f"{APP_NAME}.toml", toml_bytes(), "text/plain")},
+        headers=auth_headers(),
         timeout=10,
     )
     resp.raise_for_status()
@@ -125,6 +137,7 @@ def submit_job(pid: str, pickle_paths: list[str]) -> dict:
             f"{SERVER_URL}/start/",
             data={"pid": pid},
             files=files,
+            headers=auth_headers(),
             timeout=30,
         )
         resp.raise_for_status()
@@ -139,7 +152,7 @@ def submit_job(pid: str, pickle_paths: list[str]) -> dict:
 
 
 def wait_for_results(job_id: str, job_token: str) -> dict:
-    headers = {"X-Job-Token": job_token}
+    headers = auth_headers({"X-Job-Token": job_token})
     url = f"{SERVER_URL}/start/{job_id}/results"
     started_at = time.time()
     last_snapshot = None

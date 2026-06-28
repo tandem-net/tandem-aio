@@ -11,10 +11,21 @@ import cloudpickle
 import requests
 
 SERVER_URL = os.environ.get("TANDEM_SERVER_URL", "http://127.0.0.1:6767").rstrip("/")
+API_KEY_ENV_VAR = "TANDEM_API_KEY"
 base_path = os.path.dirname(os.path.abspath(__file__))
 pickles_root = os.path.join(base_path, "pickles")
 temp_folder = os.path.join(base_path, "temp_pid")
 path = Path(temp_folder)
+
+
+def auth_headers(extra_headers: dict | None = None) -> dict[str, str]:
+    api_key = (os.environ.get(API_KEY_ENV_VAR) or "").strip()
+    if not api_key:
+        raise RuntimeError(f"Missing {API_KEY_ENV_VAR} environment variable")
+
+    headers = dict(extra_headers or {})
+    headers["X-API-Key"] = api_key
+    return headers
 
 
 class App:
@@ -178,7 +189,7 @@ class MyInteractiveCLI(cmd.Cmd):
         self, job_id: str, job_token: str, timeout_seconds: int = 300
     ):
         results_url = f"{SERVER_URL}/start/{job_id}/results"
-        headers = {"X-Job-Token": job_token}
+        headers = auth_headers({"X-Job-Token": job_token})
         started_at = time.time()
         last_snapshot = None
 
@@ -250,7 +261,12 @@ class MyInteractiveCLI(cmd.Cmd):
 
                     with open(app.toml_path, "rb") as file:
                         files = {"toml_file": (file_name, file, "text/plain")}
-                        resp = requests.post(url, files=files, timeout=5)
+                        resp = requests.post(
+                            url,
+                            files=files,
+                            headers=auth_headers(),
+                            timeout=5,
+                        )
 
                     print(resp.text)
 
@@ -349,7 +365,13 @@ class MyInteractiveCLI(cmd.Cmd):
                 print("Error: No valid pickle files to send")
                 return
 
-            resp = requests.post(url, data={"pid": pid}, files=files, timeout=30)
+            resp = requests.post(
+                url,
+                data={"pid": pid},
+                files=files,
+                headers=auth_headers(),
+                timeout=30,
+            )
 
             print("Status:", resp.status_code)
             try:

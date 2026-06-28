@@ -13,6 +13,7 @@ from itertools import cycle
 
 from app.extensions import redis_client
 from app.models import Deployment
+from app.utils.auth import ensure_deployment_access, require_user_api_key
 from app.utils.task_queue import (
     compare_token,
     create_job,
@@ -29,16 +30,30 @@ from werkzeug.utils import secure_filename
 start_bp = Blueprint("start", __name__)
 
 
-def _require_job_token(job_id: str):
+def _require_job_access(job_id: str):
+    api_client, error = require_user_api_key()
+    if error:
+        return None, None, error
+    assert api_client is not None
+
     job = get_job(job_id)
     if not job:
-        return None, (jsonify({"error": "Unknown job id"}), 404)
+        return None, None, (jsonify({"error": "Unknown job id"}), 404)
 
     provided = request.headers.get("X-Job-Token") or request.args.get("token")
     if not compare_token(job.get("job_token"), provided):
-        return None, (jsonify({"error": "Invalid or missing job token"}), 403)
+        return None, None, (jsonify({"error": "Invalid or missing job token"}), 403)
 
-    return job, None
+    pid = (job.get("pid") or "").strip()
+    deployment = Deployment.query.filter_by(pid=pid).first()
+    if not deployment:
+        return None, None, (jsonify({"error": "Unknown deployment pid"}), 404)
+
+    deployment_error = ensure_deployment_access(api_client, deployment)
+    if deployment_error:
+        return None, None, deployment_error
+
+    return job, deployment, None
 
 
 @start_bp.route("/", methods=["POST"])
@@ -59,9 +74,18 @@ def start():
     if not pid:
         return jsonify({"error": "Missing deployment pid"}), 400
 
+    api_client, error = require_user_api_key()
+    if error:
+        return error
+    assert api_client is not None
+
     deployment = Deployment.query.filter_by(pid=pid).first()
     if not deployment:
         return jsonify({"error": "Unknown deployment pid"}), 404
+
+    deployment_error = ensure_deployment_access(api_client, deployment)
+    if deployment_error:
+        return deployment_error
 
     toml_file = request.files["toml_file"]
     toml_bytes = toml_file.read()
@@ -141,7 +165,7 @@ def start():
 
 @start_bp.route("/<job_id>", methods=["GET"])
 def job_status(job_id: str):
-    job, error = _require_job_token(job_id)
+    job, _deployment, error = _require_job_access(job_id)
     if error:
         return error
     assert job is not None
@@ -171,7 +195,7 @@ def job_status(job_id: str):
 
 @start_bp.route("/<job_id>/results", methods=["GET"])
 def job_results(job_id: str):
-    job, error = _require_job_token(job_id)
+    job, _deployment, error = _require_job_access(job_id)
     if error:
         return error
     assert job is not None

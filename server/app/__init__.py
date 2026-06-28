@@ -2,7 +2,6 @@ import os
 import pathlib
 
 from dotenv import load_dotenv
-
 from flask import Flask
 
 from app.extensions import db, redis_client
@@ -42,13 +41,13 @@ def create_app():
 
     redis_client.init_app(app)
 
+    from app.blueprints.api import api_bp
     from app.blueprints.deploy import deploy_bp
     from app.blueprints.index import index_bp
     from app.blueprints.new import new_bp
     from app.blueprints.nodes import nodes_bp
     from app.blueprints.start import start_bp
     from app.blueprints.stop import stop_bp
-    from app.blueprints.api import api_bp
 
     app.register_blueprint(index_bp, url_prefix="/")
     app.register_blueprint(start_bp, url_prefix="/start")
