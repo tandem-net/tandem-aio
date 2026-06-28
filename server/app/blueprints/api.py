@@ -1,6 +1,8 @@
 from flask import Blueprint, jsonify, request
 
-from werkzeug.security import generate_password_hash
+from werkzeug.security import check_password_hash, generate_password_hash
+
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from extensions import db
@@ -9,7 +11,16 @@ from models import User, UserAPI
 api_bp = Blueprint("api", __name__)
 
 def _verify_credentials(username: str, password: str) -> bool:
-    pass
+    statement = select(User).where(
+        User.username == username,
+        User.password == password
+    )
+    user = db.session.scalars(statement).first()
+
+    if not user:
+        return False
+
+    return check_password_hash(user.password, password)
 
 @api_bp.route("/register", methods=["POST"])
 def register():
