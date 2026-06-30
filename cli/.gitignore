@@ -1,0 +1,4 @@
+node_modules/
+dist/
+*.tandem
+.DS_Store

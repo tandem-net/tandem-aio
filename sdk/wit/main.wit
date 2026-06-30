@@ -1,6 +1,0 @@
-package local:main;
-
-world tandem-world {
-    export run: func() -> string;
-}
-
