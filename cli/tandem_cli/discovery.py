@@ -14,9 +14,11 @@ from .app_config import ProjectConfig
 
 @dataclass(frozen=True)
 class DiscoveredProject:
-    """Loaded Python module plus the Tandem tasks discovered within it."""
+    """Loaded Python module plus the SDK discovery payload derived from it."""
 
     module: ModuleType
+    sdk_descriptor: Any
+    task_descriptors: tuple[Any, ...]
     tasks: dict[str, Any]
 
 
@@ -60,15 +62,34 @@ def load_entry_module(config: ProjectConfig) -> ModuleType:
     return module
 
 
+def _sdk_import_paths(config: ProjectConfig) -> list[Path]:
+    paths = [config.project_root, config.entry_path.parent]
+    if config.sdk_python_path is not None:
+        paths.insert(0, config.sdk_python_path)
+    return paths
+
+
 def discover_project(config: ProjectConfig) -> DiscoveredProject:
-    """Import the project entrypoint and collect all Tandem tasks."""
+    """Import the project entrypoint and collect the SDK discovery payload."""
 
-    with _prepend_sys_path(
-        [config.sdk_python_path, config.project_root, config.entry_path.parent]
-    ):
+    with _prepend_sys_path(_sdk_import_paths(config)):
         module = load_entry_module(config)
-        from tandem import discover_tasks  # Imported after SDK path is injected.
 
-        tasks = discover_tasks(module)
+        try:
+            from tandem import describe_target  # Imported after SDK path is resolved.
+        except ImportError as exc:
+            raise RuntimeError(
+                "Could not import the Tandem Python SDK. Install `tandem` or set "
+                "`project.sdk_python_path` in the CLI config."
+            ) from exc
 
-    return DiscoveredProject(module=module, tasks=tasks)
+        sdk_descriptor = describe_target(module)
+        task_descriptors = tuple(sdk_descriptor.tasks)
+        tasks = {task.export_name: task.task for task in task_descriptors}
+
+    return DiscoveredProject(
+        module=module,
+        sdk_descriptor=sdk_descriptor,
+        task_descriptors=task_descriptors,
+        tasks=tasks,
+    )

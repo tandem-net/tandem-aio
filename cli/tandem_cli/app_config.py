@@ -21,9 +21,9 @@ class ProjectConfig:
     version: str
     entry_path: Path
     output_dir: Path
-    sdk_python_path: Path
+    sdk_python_path: Path | None
 
-    def as_dict(self) -> dict[str, str]:
+    def as_dict(self) -> dict[str, str | None]:
         return {
             "config_path": str(self.config_path),
             "project_root": str(self.project_root),
@@ -32,7 +32,9 @@ class ProjectConfig:
             "version": self.version,
             "entry_path": str(self.entry_path),
             "output_dir": str(self.output_dir),
-            "sdk_python_path": str(self.sdk_python_path),
+            "sdk_python_path": (
+                str(self.sdk_python_path) if self.sdk_python_path is not None else None
+            ),
         }
 
 
@@ -107,16 +109,16 @@ def load_project_config(path: str | Path) -> ProjectConfig:
 
     sdk_value = project.get("sdk_python_path")
     if sdk_value is None:
-        sdk_python_path = (_repo_root() / "sdk" / "wrappers" / "python").resolve()
+        default_sdk_path = (_repo_root() / "sdk" / "wrappers" / "python").resolve()
+        sdk_python_path = default_sdk_path if default_sdk_path.exists() else None
     else:
         sdk_python_path = (
             project_root / _coerce_string(sdk_value, "project.sdk_python_path")
         ).resolve()
-
-    if not sdk_python_path.exists():
-        raise FileNotFoundError(
-            f"Could not locate Tandem Python SDK package at {sdk_python_path}"
-        )
+        if not sdk_python_path.exists():
+            raise FileNotFoundError(
+                f"Could not locate Tandem Python SDK package at {sdk_python_path}"
+            )
 
     return ProjectConfig(
         config_path=config_path,

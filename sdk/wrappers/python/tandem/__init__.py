@@ -40,6 +40,10 @@ _EXECUTION_CLASSES = {
     "deferred": "scheduled",
 }
 
+SDK_PACKAGE_NAME = "tandem"
+SDK_LANGUAGE = "python"
+SDK_PROTOCOL_VERSION = "0.1"
+
 
 class TaskError(RuntimeError):
     """Error type that Tandem tasks may raise explicitly.
@@ -88,6 +92,54 @@ class TaskMetadata:
             "return_annotation": self.return_annotation,
             "options": _normalize_option_value(self.options),
             "referenced_values": dict(self.referenced_values),
+        }
+
+
+@dataclass(frozen=True)
+class SdkBridgeInfo:
+    """Stable SDK metadata consumed by the Tandem CLI."""
+
+    package: str = SDK_PACKAGE_NAME
+    language: str = SDK_LANGUAGE
+    protocol_version: str = SDK_PROTOCOL_VERSION
+
+    def as_dict(self) -> dict[str, str]:
+        return {
+            "package": self.package,
+            "language": self.language,
+            "protocol_version": self.protocol_version,
+        }
+
+
+@dataclass(frozen=True)
+class DiscoveredTask:
+    """CLI-facing description of a discovered Tandem task export."""
+
+    export_name: str
+    task: "TandemTask[Any, Any]"
+    metadata: TaskMetadata
+
+    def as_dict(self) -> dict[str, Any]:
+        payload = self.metadata.as_manifest_entry()
+        payload["export_name"] = self.export_name
+        return payload
+
+
+@dataclass(frozen=True)
+class DiscoveredTarget:
+    """CLI-facing description of a Python module containing Tandem tasks."""
+
+    sdk: SdkBridgeInfo
+    module_name: str | None
+    source_file: str | None
+    tasks: tuple[DiscoveredTask, ...]
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "sdk": self.sdk.as_dict(),
+            "module_name": self.module_name,
+            "source_file": self.source_file,
+            "tasks": [task.as_dict() for task in self.tasks],
         }
 
 
@@ -430,26 +482,50 @@ def _set_context(values: Mapping[str, Any]) -> None:
     _RUNTIME_CONTEXT.update(dict(values))
 
 
+def describe_target(target: ModuleType | Mapping[str, Any]) -> DiscoveredTarget:
+    """Produce a stable SDK→CLI discovery payload for a target module/namespace."""
+
+    namespace = vars(target) if isinstance(target, ModuleType) else dict(target)
+    tasks: list[DiscoveredTask] = []
+
+    for name in sorted(namespace):
+        value = namespace[name]
+        if isinstance(value, TandemTask):
+            tasks.append(
+                DiscoveredTask(
+                    export_name=name,
+                    task=value,
+                    metadata=value.metadata,
+                )
+            )
+
+    module_name = target.__name__ if isinstance(target, ModuleType) else None
+    source_file = (
+        getattr(target, "__file__", None) if isinstance(target, ModuleType) else None
+    )
+
+    return DiscoveredTarget(
+        sdk=SdkBridgeInfo(),
+        module_name=module_name,
+        source_file=source_file,
+        tasks=tuple(tasks),
+    )
+
+
 def discover_tasks(
     target: ModuleType | Mapping[str, Any],
 ) -> dict[str, TandemTask[Any, Any]]:
     """Discover Tandem tasks from a module object or namespace mapping."""
 
-    namespace = vars(target) if isinstance(target, ModuleType) else dict(target)
-    discovered: dict[str, TandemTask[Any, Any]] = {}
-
-    for name, value in namespace.items():
-        if isinstance(value, TandemTask):
-            discovered[name] = value
-
-    return discovered
+    descriptor = describe_target(target)
+    return {task.export_name: task.task for task in descriptor.tasks}
 
 
 def manifest(target: ModuleType | Mapping[str, Any]) -> list[dict[str, Any]]:
     """Produce manifest-like entries for all discovered tasks in a namespace."""
 
-    tasks = discover_tasks(target)
-    return [tasks[name].manifest_entry() for name in sorted(tasks)]
+    descriptor = describe_target(target)
+    return [task.metadata.as_manifest_entry() for task in descriptor.tasks]
 
 
 def __getattr__(name: str) -> Any:
@@ -464,6 +540,12 @@ distribute = compute
 
 
 __all__ = [
+    "DiscoveredTarget",
+    "DiscoveredTask",
+    "SDK_LANGUAGE",
+    "SDK_PACKAGE_NAME",
+    "SDK_PROTOCOL_VERSION",
+    "SdkBridgeInfo",
     "TaskError",
     "TandemTask",
     "TaskMetadata",
@@ -473,6 +555,7 @@ __all__ = [
     "context",
     "cron",
     "deferred",
+    "describe_target",
     "discover_tasks",
     "distribute",
     "immutable",

@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from .app_config import ProjectConfig
+from .discovery import DiscoveredProject
 
 
 def _relative_or_absolute(path_value: str | None, *, base: Path) -> str | None:
@@ -88,14 +89,17 @@ def _build_schedule_hint(
     }
 
 
-def build_manifest(config: ProjectConfig, tasks: dict[str, Any]) -> dict[str, Any]:
-    """Build a manifest.json-compatible structure from discovered Tandem tasks."""
+def build_manifest(
+    config: ProjectConfig, discovered: DiscoveredProject
+) -> dict[str, Any]:
+    """Build a manifest.json-compatible structure from the SDK discovery payload."""
 
     manifest_tasks: list[dict[str, Any]] = []
     pipeline_edges: list[dict[str, str]] = []
 
-    for export_name, task in sorted(tasks.items()):
-        task_descriptor = task.manifest_entry()
+    for task_descriptor_record in discovered.task_descriptors:
+        task_descriptor = task_descriptor_record.as_dict()
+        export_name = str(task_descriptor_record.export_name)
         options = dict(task_descriptor.get("options", {}))
         canonical_annotation = str(task_descriptor["canonical_annotation"])
 
@@ -167,6 +171,14 @@ def build_manifest(config: ProjectConfig, tasks: dict[str, Any]) -> dict[str, An
         "name": config.name,
         "version": config.version,
         "runtime": config.runtime,
+        "sdk": discovered.sdk_descriptor.sdk.as_dict(),
+        "module": {
+            "name": discovered.sdk_descriptor.module_name,
+            "source_file": _relative_or_absolute(
+                discovered.sdk_descriptor.source_file,
+                base=config.project_root,
+            ),
+        },
         "entry": _relative_or_absolute(
             str(config.entry_path), base=config.project_root
         ),
