@@ -1,0 +1,13 @@
+README.md
+pyproject.toml
+tandem/__init__.py
+tandem/compute.py
+tandem/errors.py
+tandem/immutable.py
+tandem/split.py
+tandem/validator.py
+tandem_sdk.egg-info/PKG-INFO
+tandem_sdk.egg-info/SOURCES.txt
+tandem_sdk.egg-info/dependency_links.txt
+tandem_sdk.egg-info/requires.txt
+tandem_sdk.egg-info/top_level.txt
