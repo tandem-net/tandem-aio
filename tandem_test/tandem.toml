@@ -1,6 +1,0 @@
-[project]
-name = "tandem_test"
-runtime = "python"
-version = "0.1.0"
-entry = "tasks.py"
-output_dir = ".tandem_build/tandem_test"

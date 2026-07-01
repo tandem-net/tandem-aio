@@ -31,11 +31,13 @@ F = TypeVar("F", bound=Callable[..., Any])
 
 def compute(batch: int = 1, timeout_ms: int = 50) -> Callable[[F], F]:
     """
-    Decorator factory. Validates independence and attaches metadata.
-    Returns the original function unchanged.
+    Decorator factory. Validates that the function is split-independent,
+    attaches Tandem metadata, and returns a wrapped callable.
 
-    Raises TandemValidationError at decoration time if the function
-    reads any global that is not declared tandem.immutable().
+    Raises
+    ------
+    TandemValidationError
+        If the decorated function is not split-independent.
     """
     def decorator(func: F) -> F:
         validate_independence(func)
