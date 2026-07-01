@@ -5,6 +5,7 @@ import base64
 import json
 import sys
 import time
+from pathlib import Path
 from typing import Any, Sequence
 
 from dotenv import load_dotenv
@@ -138,6 +139,85 @@ def _report_analysis_failure(exc: AnalysisFailure) -> int:
     return 1
 
 
+_DEFAULT_INIT_CONFIG_PATH = "tandem.toml"
+_DEFAULT_INIT_ENTRY = "tasks.py"
+_DEFAULT_INIT_VERSION = "0.1.0"
+
+
+def _default_init_project_name() -> str:
+    current_dir = Path.cwd().name.strip()
+    return current_dir or "tandem-project"
+
+
+def _default_init_output_dir(project_name: str) -> str:
+    return f".tandem_build/{project_name}"
+
+
+def _prompt_init_value(*, label: str, description: str, default: str) -> str:
+    print(f"\n{label}")
+    print(f"  {description}")
+    print(f"  Press Enter to accept the default: {default}")
+
+    try:
+        value = input("> ").strip()
+    except EOFError as exc:  # pragma: no cover - depends on terminal state.
+        raise ValueError(
+            "Interactive init could not read input. Re-run in a terminal or pass values explicitly."
+        ) from exc
+
+    return value or default
+
+
+def _resolve_init_values(
+    args: argparse.Namespace,
+) -> tuple[str, str, str, str | None, str]:
+    version = args.version or _DEFAULT_INIT_VERSION
+
+    if args.config_path and args.name and args.entry:
+        return (
+            args.config_path,
+            args.name,
+            args.entry,
+            args.output_dir,
+            version,
+        )
+
+    print("Create a new Tandem project config.")
+    print("We'll ask a few quick questions. Defaults are shown for optional values.")
+
+    config_path = args.config_path or _prompt_init_value(
+        label="Config path",
+        description="Where should Tandem write the project TOML file?",
+        default=_DEFAULT_INIT_CONFIG_PATH,
+    )
+
+    project_name = args.name or _prompt_init_value(
+        label="Project name",
+        description="Used for the project metadata and the default build output folder.",
+        default=_default_init_project_name(),
+    )
+
+    entry = args.entry or _prompt_init_value(
+        label="Python entry file",
+        description="Path to the Python file containing your Tandem-decorated tasks.",
+        default=_DEFAULT_INIT_ENTRY,
+    )
+
+    resolved_version = args.version or _prompt_init_value(
+        label="Project version",
+        description="Semantic version written into the project config.",
+        default=version,
+    )
+
+    output_dir = args.output_dir or _prompt_init_value(
+        label="Build output directory",
+        description="Directory for generated build artifacts.",
+        default=_default_init_output_dir(project_name),
+    )
+
+    return config_path, project_name, entry, output_dir, resolved_version
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tandem",
@@ -148,19 +228,32 @@ def _build_parser() -> argparse.ArgumentParser:
     init_parser = subparsers.add_parser(
         "init", help="Create a new Tandem project TOML file."
     )
-    init_parser.add_argument("config_path", help="Path to the TOML config to create.")
-    init_parser.add_argument("--name", required=True, help="Project name.")
+    init_parser.add_argument(
+        "config_path",
+        nargs="?",
+        default=None,
+        help="Path to the TOML config to create. Prompts interactively when omitted.",
+    )
+    init_parser.add_argument(
+        "--name",
+        default=None,
+        help="Project name. Defaults to the current directory name during interactive init.",
+    )
     init_parser.add_argument(
         "--entry",
-        required=True,
-        help="Path to the Python source file containing Tandem-decorated tasks.",
+        default=None,
+        help="Path to the Python source file containing Tandem-decorated tasks. Defaults to `tasks.py` during interactive init.",
     )
     init_parser.add_argument(
         "--output-dir",
         default=None,
-        help="Build output directory relative to the config file.",
+        help="Build output directory relative to the config file. Defaults to `.tandem_build/<project-name>`.",
     )
-    init_parser.add_argument("--version", default="0.1.0", help="Project version.")
+    init_parser.add_argument(
+        "--version",
+        default=None,
+        help="Project version. Defaults to `0.1.0`.",
+    )
 
     inspect_parser = subparsers.add_parser(
         "inspect", help="Load a project, discover tasks, and print analysis output."
@@ -228,12 +321,13 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _cmd_init(args: argparse.Namespace) -> int:
+    config_path, name, entry, output_dir, version = _resolve_init_values(args)
     path = write_project_config(
-        args.config_path,
-        name=args.name,
-        entry=args.entry,
-        output_dir=args.output_dir,
-        version=args.version,
+        config_path,
+        name=name,
+        entry=entry,
+        output_dir=output_dir,
+        version=version,
     )
     print(f"Created Tandem project config at {path}")
     return 0

@@ -39,6 +39,7 @@ under `cli/tandem_cli/`.
 ## Commands
 
 ```bash
+tandem init
 tandem init <config.toml> --name <project-name> --entry <python-entry-file>
 tandem inspect <config.toml>
 tandem manifest <config.toml>
@@ -47,6 +48,16 @@ tandem deploy <config.toml> --api-key <api-key>
 tandem start <config.toml> --api-key <api-key>
 tandem clean <config.toml>
 ```
+
+`tandem init`  works interactively by default: it asks a few quick questions, shows defaults, and lets you press Enter to accept them.
+
+Interactive defaults:
+
+- config path: `tandem.toml`
+- project name: current directory name
+- entry file: `tasks.py`
+- version: `0.1.0`
+- output directory: `.tandem_build/<project-name>`
 
 ## Full local flow
 
