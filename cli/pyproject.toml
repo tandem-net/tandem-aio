@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tandem-cli"
+version = "0.1.0"
+description = "Tandem Python CLI for building, deploying, and starting Tandem WASM jobs"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "requests>=2.0",
+  "tomli>=2.0; python_version < '3.11'",
+]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Operating System :: OS Independent",
+]
+
+[project.scripts]
+tandem = "tandem_cli.commands:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["tandem_cli*"]

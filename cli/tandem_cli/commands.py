@@ -138,7 +138,7 @@ def _report_analysis_failure(exc: AnalysisFailure) -> int:
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="tandem-cli",
+        prog="tandem",
         description="Discover Tandem SDK tasks, build `.wasm` artifacts, and run them through a Tandem server.",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
