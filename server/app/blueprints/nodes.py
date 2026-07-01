@@ -183,7 +183,7 @@ def register():
         if value is not None:
             metrics[field] = str(value)
 
-    # zatar sat on my wrist while I wrote this one, so yes, I kept it simple.
+    # zatar sat on my wrist while I wrote this 
     redis_client.hset(f"node:{node_id}", mapping=metrics)
     redis_client.sadd("nodes", node_id)
 

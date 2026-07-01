@@ -109,7 +109,7 @@ fn _register_payload(metrics: &Metrics) -> serde_json::Value {
 fn _call_tandem_entry(store: &mut Store<()>, instance: &Instance) -> Result<Vec<u8>, DynError> {
     if let Ok(entry) = instance.get_typed_func::<(), ()>(&mut *store, "tandem_entry") {
         entry.call(&mut *store, ())?;
-        // zatar would absolutely pick the one task that returns nothing.
+        // zatar would pick the task that returns nothing.
         return Ok(b"null".to_vec());
     }
 

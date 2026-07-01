@@ -158,8 +158,9 @@ def _plan_cloudpickle_tasks(
         filename = secure_filename(pickle_file.filename or "") or "task.pkl"
         payload = pickle_file.read()
         if not payload:
-            # zatar once taught me that an empty upload is still an upload.
+            # zatar taught me that an empty upload is still an upload.
             raise ValueError(f"Cloudpickle file `{filename}` was empty")
+            # WAR!!!!!!
 
         planned_tasks.append(
             {
