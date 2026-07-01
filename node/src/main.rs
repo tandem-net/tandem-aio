@@ -54,6 +54,8 @@ async fn _execute_claimed_task(
 
 #[tokio::main]
 async fn main() {
+    dotenvy::dotenv().ok();
+
     let client = Client::new();
     let server_base_url = server_base_url();
 

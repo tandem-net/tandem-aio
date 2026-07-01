@@ -7,6 +7,8 @@ import sys
 import time
 from typing import Any, Sequence
 
+from dotenv import load_dotenv
+
 from .analysis import Diagnostic
 from .app_config import write_project_config
 from .build import AnalysisFailure, build_project, clean_project, inspect_project
@@ -362,6 +364,8 @@ def _cmd_clean(args: argparse.Namespace) -> int:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    load_dotenv()
+
     parser = _build_parser()
     args = parser.parse_args(argv)
 
