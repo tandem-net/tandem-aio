@@ -21,7 +21,7 @@
  */
 
 import { motion } from "framer-motion";
-import { TEAM } from "@/lib/data";
+import { FOUNDERS } from "@/lib/data";
 import { scaleIn, fadeUp, staggerParent, viewportConfig } from "@/lib/motion";
 import GlassCard from "@/components/ui/GlassCard";
 import SectionLabel from "@/components/ui/SectionLabel";
@@ -47,7 +47,7 @@ function TeamCard({ member }) {
   // No interactive React state needed per card — hover is handled declaratively
   // by Framer's `whileHover` (via GlassCard) and Tailwind `group-hover`. The
   // only "branch" is whether a real image exists, decided from the data.
-  const hasImage = Boolean(member.image);
+  const hasImage = false;
 
   return (
     // `scaleIn` is the per-card entrance (zoom + fade + rise). As a child of the
@@ -99,12 +99,6 @@ function TeamCard({ member }) {
           {/* LOCATION TAG — a tiny frosted chip pinned bottom-left, signalling
               where this contributor is on the globe (the "decentralized roots"
               theme). pointer-events-none so it never blocks card interaction. */}
-          <div className="pointer-events-none absolute bottom-3 left-3">
-            <span className="glass inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] text-mist-200">
-              <span className="h-1 w-1 rounded-full bg-accent-blue shadow-glow-blue" />
-              {member.location}
-            </span>
-          </div>
         </div>
 
         {/* ---- TEXT BLOCK ------------------------------------------------- */}
@@ -119,9 +113,6 @@ function TeamCard({ member }) {
           <p className="mt-1 text-[13px] font-medium text-accent-blue">
             {member.role}
           </p>
-
-          {/* AFFILIATION — the University / Major line, muted gray. */}
-          <p className="mt-0.5 text-[13px] text-mist-400">{member.affiliation}</p>
 
           {/* BIO — the single high-impact sentence. `mt-auto` pushes it to the
               bottom so bios align across cards of differing text length. */}
@@ -179,7 +170,7 @@ export default function TeamGrid() {
           viewport={viewportConfig}
           className="mt-14 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4"
         >
-          {TEAM.map((member) => (
+          {FOUNDERS.map((member) => (
             <TeamCard key={member.id} member={member} />
           ))}
         </motion.div>

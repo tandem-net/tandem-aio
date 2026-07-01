@@ -50,7 +50,7 @@ export default function Navbar() {
     >
       <nav className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6 lg:px-8">
         {/* BRAND — a glowing pip + wordmark. tracking-tight for the logotype. */}
-        <a href="/" className="flex items-center gap-2.5">
+        <a href="#top" className="flex items-center gap-2.5">
           <span className="h-2.5 w-2.5 rounded-full bg-accent-blue shadow-glow-blue" />
           <span className="text-[17px] font-semibold tracking-tight text-mist-50">
             Tandem
@@ -74,10 +74,10 @@ export default function Navbar() {
 
         {/* DESKTOP CTA */}
         <a
-          href="#deploy"
+          href="#join"
           className="hidden rounded-full bg-mist-50 px-4 py-1.5 text-[14px] font-medium text-obsidian-950 transition-colors duration-300 ease-apple hover:bg-mist-200 md:inline-block"
         >
-          Deploy
+          Join
         </a>
 
         {/* MOBILE TOGGLE — a minimal two-line icon that morphs to an X. */}

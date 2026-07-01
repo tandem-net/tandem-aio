@@ -102,7 +102,7 @@ export default function Hero() {
           <motion.div variants={fadeUp} className="mb-8 flex justify-center">
             <span className="glass inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-[13px] text-mist-200">
               <span className="h-1.5 w-1.5 rounded-full bg-accent-blue shadow-glow-blue" />
-              Developer beta is live
+              Private compute for everyday devices
             </span>
           </motion.div>
 
@@ -121,8 +121,7 @@ export default function Hero() {
               The world&apos;s idle compute.
             </span>
             <br />
-            {/* Second line stays pure white for contrast against the gradient. */}
-            <span className="text-mist-50">Unified.</span>
+            <span className="text-mist-50">Made private.</span>
           </motion.h1>
 
           {/* SUB-HEADLINE — muted gray, constrained measure (max-w-2xl) for
@@ -131,8 +130,7 @@ export default function Hero() {
             variants={fadeUp}
             className="mx-auto mt-7 max-w-2xl text-balance text-lg leading-relaxed text-mist-400 sm:text-xl"
           >
-            Tandem turns a planet of idle machines into one coordinated,
-            distributed data center. No hyperscaler required.
+            Tandem lets users turn spare capacity on their own devices into a secure, distributed network that runs in the background of everyday life.
           </motion.p>
 
           {/* CTA ROW — primary fill + secondary chevron link. flex-wrap so it
@@ -141,11 +139,11 @@ export default function Hero() {
             variants={fadeUp}
             className="mt-10 flex flex-wrap items-center justify-center gap-3"
           >
-            <Button href="#deploy" variant="primary">
-              Deploy a Node
+            <Button href="#join" variant="primary">
+              Join the Network
             </Button>
-            <Button href="#whitepaper" variant="secondary">
-              Read the Whitepaper
+            <Button href="#how-it-works" variant="secondary">
+              See How It Works
             </Button>
           </motion.div>
         </motion.div>

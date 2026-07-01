@@ -265,7 +265,7 @@ export default function ArchitectureReveal() {
       {/* INTRO COPY — scrolls normally above the pinned canvas. */}
       <div className="mx-auto max-w-3xl px-6 pt-28 text-center lg:pt-40">
         <div className="flex justify-center">
-          <SectionLabel>The Architecture</SectionLabel>
+          <SectionLabel>How It Works</SectionLabel>
         </div>
         <motion.h2
           variants={fadeUp}
@@ -274,7 +274,7 @@ export default function ArchitectureReveal() {
           viewport={viewportConfig}
           className="mt-6 text-section font-semibold text-mist-50"
         >
-          One task. <span className="text-mist-400">Many machines.</span>
+          One job. <span className="text-mist-400">Many private nodes.</span>
         </motion.h2>
         <motion.p
           variants={fadeUp}
@@ -283,8 +283,7 @@ export default function ArchitectureReveal() {
           viewport={viewportConfig}
           className="mx-auto mt-5 max-w-xl text-balance text-lg leading-relaxed text-mist-400"
         >
-          Scroll to watch a single compute job fragment across the mesh —
-          packaged in Python, routed by Rust, orchestrated by Go.
+          Scroll to see a compute task move across the mesh — packaged for developers, routed securely, and orchestrated in the background.
         </motion.p>
       </div>
 

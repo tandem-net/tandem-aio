@@ -87,7 +87,7 @@ export default function CoreMetrics() {
 
       <div className="mx-auto max-w-6xl">
         <div className="mb-16 flex justify-center">
-          <SectionLabel>The Scale</SectionLabel>
+          <SectionLabel>Why Tandem</SectionLabel>
         </div>
 
         {/* ---- MOTION LAYER ---------------------------------------------------

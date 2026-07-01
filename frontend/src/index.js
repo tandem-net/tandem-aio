@@ -1,106 +1,105 @@
-import React, { Component } from 'react';
-import ReactDOM from 'react-dom/client';
-import { Text, View, StyleSheet, TouchableOpacity, Dimensions } from 'react-native-web';
+import React, { useEffect, useRef } from 'react';
+import { createRoot } from 'react-dom/client';
+import { View, Text, StyleSheet } from 'react-native';
 
-const deviceHeight = Dimensions.get('window').height;
-const deviceWidth = Dimensions.get('window').width;
+const FRAME_FOLDER = '/frames';
+const FRAME_COUNT = 200;
+const SCROLL_MULTIPLIER = 1.5;
 
-export default class App extends Component {
-  render() {
-    return (
-      <View style={styles.page}>
-        <View style={styles.navbar}>
-          <View style={styles.logoContainer}>
-            <Text style={styles.logoText}>TANDEM</Text>
-          </View>
+const formatFrame = (value) => String(value).padStart(4, '0');
+const getFrameUrl = (frameNumber) => `${FRAME_FOLDER}/frame_${formatFrame(frameNumber)}.png`;
 
-          <View style={styles.navActions}>
-            <TouchableOpacity style={styles.navButton}>
-              <Text style={styles.navButtonText}>Home</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.navButton}>
-              <Text style={styles.navButtonText}>About</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.navButton}>
-              <Text style={styles.navButtonText}>Contact</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+function App() {
+  const imageRef = useRef(null);
+  const currentFrameRef = useRef(1);
+  const lastFrameRef = useRef(0);
+  const rafRef = useRef(0);
 
-        <View style={styles.content}>
-          <Text style={styles.title}>Welcome to Tandem</Text>
-          <Text style={styles.subtitle}>Tandem is so cool</Text>
-        </View>
+  const updateFrameFromScroll = () => {
+    const scrollTop = window.scrollY;
+    const documentHeight = document.documentElement.scrollHeight;
+    const windowHeight = window.innerHeight;
+    const maxScroll = Math.max(documentHeight - windowHeight, 1);
+    const progress = Math.min(1, Math.max(0, scrollTop / maxScroll));
+    const rawFrame = Math.round(progress * (FRAME_COUNT - 1)) + 1;
+    currentFrameRef.current = Math.min(FRAME_COUNT, Math.max(1, rawFrame));
+  };
+
+  useEffect(() => {
+    const tick = () => {
+      updateFrameFromScroll();
+      const image = imageRef.current;
+      const nextFrame = currentFrameRef.current;
+
+      if (image && nextFrame !== lastFrameRef.current) {
+        image.src = getFrameUrl(nextFrame);
+        lastFrameRef.current = nextFrame;
+      }
+
+      rafRef.current = requestAnimationFrame(tick);
+    };
+
+    rafRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, []);
+
+  return (
+    <View style={styles.appContainer}>
+      <View style={styles.backgroundContainer} pointerEvents="none">
+        <img ref={imageRef} alt="background frame" style={styles.backgroundImage} />
+        <View style={styles.backgroundOverlay} pointerEvents="none" />
       </View>
-    );
-  }
+      <View style={styles.contentContainer}>
+        <Text style={styles.heading}>Scroll to scrub the background</Text>
+      </View>
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
-  page: {
-    minHeight: deviceHeight,
-    width: deviceWidth,
-    backgroundColor: '#f7f7f7',
-    margin: 0,
-    padding: 0,
-  },
-  navbar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#ffffff',
-    paddingHorizontal: 24,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
-    width: deviceWidth,
-  },
-  logoContainer: {
+  appContainer: {
     flex: 1,
-    alignItems: 'flex-start',
+    minHeight: '400vh',
+    backgroundColor: '#050814',
+    color: '#ffffff',
   },
-  logoText: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#111827',
-    letterSpacing: 1.2,
-  },
-  navActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  navButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 6,
-    marginLeft: 8,
-  },
-  navButtonText: {
-    fontSize: 15,
-    color: '#4b5563',
-    fontWeight: '600',
-  },
-  content: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+  contentContainer: {
+    minHeight: '400vh',
+    paddingTop: 80,
     paddingHorizontal: 24,
   },
-  title: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 8,
+  backgroundContainer: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: -1,
+    overflow: 'hidden',
+    backgroundColor: '#050814',
   },
-  subtitle: {
-    fontSize: 16,
-    color: '#6b7280',
-    textAlign: 'center',
+  backgroundImage: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
+    opacity: 0.98,
+    pointerEvents: 'none',
+  },
+  backgroundOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.14)',
+  },
+  heading: {
+    fontSize: 38,
+    fontWeight: '800',
+    color: '#ffffff',
+    marginBottom: 24,
   },
 });
 
-ReactDOM.createRoot(document.getElementById('root')).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
+const root = createRoot(document.getElementById('root'));
+root.render(<App />);

@@ -83,7 +83,7 @@ export default function HardwareShowcase() {
         {/* HEADER COPY */}
         <div className="mx-auto max-w-2xl text-center">
           <div className="flex justify-center">
-            <SectionLabel>Hardware Agnostic</SectionLabel>
+            <SectionLabel>Built for Any Device</SectionLabel>
           </div>
           <motion.h2
             variants={fadeUp}
@@ -92,7 +92,7 @@ export default function HardwareShowcase() {
             viewport={viewportConfig}
             className="mt-6 text-section font-semibold text-mist-50"
           >
-            From consumer rigs to enterprise iron.
+            From home desktops to edge servers.
           </motion.h2>
           <motion.p
             variants={fadeUp}
@@ -101,8 +101,7 @@ export default function HardwareShowcase() {
             viewport={viewportConfig}
             className="mx-auto mt-5 max-w-xl text-balance text-lg leading-relaxed text-mist-400"
           >
-            Tandem turns idle silicon into a unified grid. If it can run a
-            runtime, it can earn its keep on the mesh.
+            Tandem turns idle silicon into a unified grid. If a device can run a runtime, it can contribute to the network.
           </motion.p>
         </div>
 

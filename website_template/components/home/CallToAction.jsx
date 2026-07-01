@@ -75,14 +75,13 @@ export default function CallToAction() {
           variants={fadeUp}
           className="text-balance text-section font-semibold text-mist-50"
         >
-          Spin up a node in one line.
+          Join the mesh in minutes.
         </motion.h2>
         <motion.p
           variants={fadeUp}
           className="mx-auto mt-5 max-w-lg text-balance text-lg leading-relaxed text-mist-400"
         >
-          Join the mesh in seconds. Paste the command, or drop your email for the
-          developer beta.
+          Add your device, run the installer, and let Tandem work quietly in the background. Drop your email to get early access.
         </motion.p>
 
         {/* ---- TERMINAL COMMAND ---------------------------------------------

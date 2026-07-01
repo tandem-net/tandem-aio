@@ -22,6 +22,10 @@
     scrollbar-gutter: stable;
   }
 
+  section[id] {
+    scroll-margin-top: 5rem;
+  }
+
   body {
     @apply bg-obsidian-950 text-mist-50 font-sans antialiased;
     /* `text-rendering` + font smoothing = crisper thin text on the dark canvas,

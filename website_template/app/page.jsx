@@ -23,16 +23,26 @@ import Hero from "@/components/home/Hero";
 import CoreMetrics from "@/components/home/CoreMetrics";
 import ArchitectureReveal from "@/components/home/ArchitectureReveal";
 import HardwareShowcase from "@/components/home/HardwareShowcase";
+import Founders from "@/components/home/Founders";
 import CallToAction from "@/components/home/CallToAction";
 
 export default function HomePage() {
   return (
     <>
-      <Hero />
-      <CoreMetrics />
-      <ArchitectureReveal />
+      <div id="top">
+        <Hero />
+      </div>
+      <div id="why">
+        <CoreMetrics />
+      </div>
+      <div id="how-it-works">
+        <ArchitectureReveal />
+      </div>
       <HardwareShowcase />
-      <CallToAction />
+      <Founders />
+      <div id="join">
+        <CallToAction />
+      </div>
     </>
   );
 }

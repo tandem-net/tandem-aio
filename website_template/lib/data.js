@@ -20,29 +20,29 @@
 // ---------------------------------------------------------------------------
 export const METRICS = [
   {
-    id: "flops",
-    label: "Aggregate Network FLOPS",
-    value: 4.82,
-    suffix: " PFLOPS",
-    decimals: 2,
-    hint: "Peak floating-point throughput across all online workers.",
-  },
-  {
     id: "nodes",
-    label: "Active Global Nodes",
-    value: 12480,
+    label: "Private Nodes Connected",
+    value: 8420,
     suffix: "",
     decimals: 0,
-    hint: "Volunteer machines currently advertising spare capacity.",
+    hint: "Home computers and edge devices joined to the mesh.",
   },
   {
-    id: "tasks",
-    label: "Tasks Completed",
-    value: 38_400_000,
+    id: "jobs",
+    label: "Secure Jobs Processed",
+    value: 1280000,
     suffix: "",
     decimals: 0,
-    compact: true, // render as 38.4M
-    hint: "Serialized Python jobs executed since genesis.",
+    compact: true,
+    hint: "Background workloads completed without central hosting.",
+  },
+  {
+    id: "homes",
+    label: "Homes Participating",
+    value: 3200,
+    suffix: "",
+    decimals: 0,
+    hint: "Everyday users contributing spare compute quietly and safely.",
   },
 ];
 
@@ -142,42 +142,42 @@ export const PILLARS = [
 // `image` is intentionally null so the card renders a styled monogram
 // placeholder. Drop a real path (e.g. "/team/ada.jpg") to swap in a photo.
 // ---------------------------------------------------------------------------
-export const TEAM = [
+export const FOUNDERS = [
   {
     id: "founder-1",
-    name: "Robel Yoseph",
-    role: "Co-Founder · Systems & Networking",
-    affiliation: "B.S. Computer Science",
-    bio: "Obsessed with squeezing data-center throughput out of the idle silicon already sitting in people's bedrooms.",
-    image: null,
-    location: "Seattle, USA",
+    name: "Aryan Chaudhuri",
+    role: "Founder · Product & Systems",
+    bio: "Leads the vision for a private, distributed compute layer that runs quietly on ordinary machines.",
   },
   {
     id: "founder-2",
-    name: "A. Founder",
-    role: "Co-Founder · Distributed Systems",
-    affiliation: "B.S. Electrical Engineering",
-    bio: "Believes the next hyperscaler won't own a single server — it will coordinate millions it never bought.",
-    image: null,
-    location: "Berlin, DE",
+    name: "Robel Yoseph",
+    role: "Founder · Networking",
+    bio: "Designs the mesh logic that helps devices discover each other and cooperate securely.",
   },
   {
     id: "founder-3",
-    name: "B. Founder",
-    role: "Co-Founder · Runtime & Serialization",
-    affiliation: "M.S. Computer Science",
-    bio: "Wants shipping a Python function to a stranger's GPU to feel as boring as calling a local method.",
-    image: null,
-    location: "Bangalore, IN",
+    name: "Wissam Nusiar",
+    role: "Founder · Infrastructure",
+    bio: "Builds the resilient backbone that keeps the network stable and easy to deploy.",
   },
   {
     id: "founder-4",
-    name: "C. Founder",
-    role: "Co-Founder · Protocol & Security",
-    affiliation: "B.S. Mathematics",
-    bio: "Designs the trust layer that lets untrusted machines cooperate without a central authority watching.",
-    image: null,
-    location: "São Paulo, BR",
+    name: "Vishal Ambatipudi",
+    role: "Founder · Runtime",
+    bio: "Focuses on making execution smooth, lightweight, and accessible for developers.",
+  },
+  {
+    id: "founder-5",
+    name: "Shamgar David",
+    role: "Founder · Security",
+    bio: "Shapes the trust model that allows the network to stay private and reliable.",
+  },
+  {
+    id: "founder-6",
+    name: "Ethan Yao",
+    role: "Founder · Platform",
+    bio: "Brings product polish and practical user experience thinking to the deployment flow.",
   },
 ];
 
@@ -185,8 +185,9 @@ export const TEAM = [
 // NAV — shared between Navbar instances on every page.
 // ---------------------------------------------------------------------------
 export const NAV_LINKS = [
-  { label: "Home", href: "/" },
-  { label: "About", href: "/about" },
-  { label: "Docs", href: "#" },
-  { label: "Whitepaper", href: "#" },
+  { label: "Home", href: "#top" },
+  { label: "Why Tandem", href: "#why" },
+  { label: "How It Works", href: "#how-it-works" },
+  { label: "Founders", href: "#founders" },
+  { label: "Join", href: "#join" },
 ];
