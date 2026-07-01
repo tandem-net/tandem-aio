@@ -220,7 +220,6 @@ def claim_task():
         "task_name": task.get("task_name") or "",
         "filename": task.get("filename") or "",
         "runtime": task.get("runtime") or "cloudpickle",
-        "execution_class": task.get("execution_class") or "compute",
         "claim_token": task.get("claim_token") or "",
         "download_url": f"{base_url}/nodes/tasks/{tid}/download/{download_token}",
     }

@@ -124,7 +124,6 @@ def _queue_planned_tasks(
             assigned_node=planned_task["assigned_node"],
             runtime=planned_task.get("runtime", "cloudpickle"),
             task_name=planned_task.get("task_name", ""),
-            execution_class=planned_task.get("execution_class", "compute"),
             timeout_ms=planned_task.get("timeout_ms"),
             shard_index=planned_task.get("shard_index"),
             shard_total=planned_task.get("shard_total"),
@@ -163,7 +162,6 @@ def _plan_cloudpickle_tasks(
                 "assigned_node": next(node_pool),
                 "runtime": "cloudpickle",
                 "task_name": Path(filename).stem,
-                "execution_class": "compute",
             }
         )
 
@@ -261,9 +259,6 @@ def _plan_wasm_tasks(
         used_uploads.add(upload_name)
         shard_total = _planned_wasm_shards(raw_entry, available_nodes)
         timeout_ms = _coerce_non_negative_int(raw_entry.get("timeout_ms"))
-        execution_class = (
-            str(raw_entry.get("execution_class") or "compute").strip() or "compute"
-        )
 
         for shard_index in range(shard_total):
             planned_task: dict[str, Any] = {
@@ -272,7 +267,6 @@ def _plan_wasm_tasks(
                 "assigned_node": next(node_pool),
                 "runtime": "wasm",
                 "task_name": task_name,
-                "execution_class": execution_class,
                 "timeout_ms": timeout_ms,
             }
             if shard_total > 1:
@@ -349,13 +343,6 @@ def start():
                 wasm_files=request.files.getlist("wasm_files"),
                 available_nodes=available_nodes,
             )
-
-            manifest_version = manifest.get("version")
-            manifest_runtime = manifest.get("runtime")
-            if isinstance(manifest_version, str) and manifest_version.strip():
-                relevant["version"] = manifest_version.strip()
-            if isinstance(manifest_runtime, str) and manifest_runtime.strip():
-                relevant["runtime"] = manifest_runtime.strip()
         else:
             available_nodes = get_available_nodes()
             if not available_nodes:
