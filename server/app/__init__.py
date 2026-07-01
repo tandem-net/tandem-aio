@@ -8,6 +8,7 @@ from app.extensions import db, redis_client
 
 load_dotenv()
 
+
 def create_app():
     app = Flask(__name__)
 
@@ -38,6 +39,10 @@ def create_app():
     task_storage_root = os.environ.get("TASK_STORAGE_ROOT")
     if task_storage_root:
         app.config["TASK_STORAGE_ROOT"] = task_storage_root
+
+    node_registration_token = os.environ.get("TANDEM_NODE_REGISTRATION_TOKEN")
+    if node_registration_token:
+        app.config["NODE_REGISTRATION_TOKEN"] = node_registration_token
 
     redis_client.init_app(app)
 

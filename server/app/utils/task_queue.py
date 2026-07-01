@@ -47,6 +47,13 @@ def safe_float(value: Any, default: float = 0.0) -> float:
         return default
 
 
+def safe_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def compare_token(expected: str | None, provided: str | None) -> bool:
     if not expected or not provided:
         return False
@@ -64,8 +71,46 @@ def storage_root() -> pathlib.Path:
     return root
 
 
-def task_blob_path(job_id: str, tid: str) -> pathlib.Path:
-    path = storage_root() / "tasks" / job_id / f"{tid}.pkl"
+def _blob_suffix(filename: str | None) -> str:
+    suffix = pathlib.Path(filename or "").suffix.strip()
+    if not suffix:
+        return ".bin"
+    if suffix.startswith("."):
+        return suffix
+    return f".{suffix}"
+
+
+def _unassigned_queue_key(runtime: str | None) -> str:
+    normalized = (runtime or "cloudpickle").strip() or "cloudpickle"
+    if normalized == "cloudpickle":
+        return "tasks:unassigned"
+    return f"tasks:unassigned:{normalized}"
+
+
+def _flag_enabled(value: Any) -> bool:
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _node_supports_runtime(node: dict[str, str] | None, runtime: str | None) -> bool:
+    normalized = (runtime or "cloudpickle").strip() or "cloudpickle"
+    if normalized == "wasm":
+        return _flag_enabled((node or {}).get("supports_wasm"))
+
+    supports_cloudpickle = (node or {}).get("supports_cloudpickle")
+    if supports_cloudpickle is None:
+        return True
+    return _flag_enabled(supports_cloudpickle)
+
+
+def _node_unassigned_runtimes(node: dict[str, str]) -> list[str]:
+    runtimes = ["cloudpickle"]
+    if _node_supports_runtime(node, "wasm"):
+        runtimes.insert(0, "wasm")
+    return runtimes
+
+
+def task_blob_path(job_id: str, tid: str, filename: str | None = None) -> pathlib.Path:
+    path = storage_root() / "tasks" / job_id / f"{tid}{_blob_suffix(filename)}"
     path.parent.mkdir(parents=True, exist_ok=True)
     return path
 
@@ -159,7 +204,9 @@ def is_node_healthy(node: dict[str, str] | None, *, now: float | None = None) ->
     return (now - last_seen) <= NODE_STALE_SECONDS
 
 
-def get_healthy_node_ids(*, exclude: str | None = None) -> list[str]:
+def get_healthy_node_ids(
+    *, exclude: str | None = None, required_runtime: str | None = None
+) -> list[str]:
     current = time.time()
     healthy: list[str] = []
 
@@ -168,8 +215,12 @@ def get_healthy_node_ids(*, exclude: str | None = None) -> list[str]:
             continue
 
         node = get_node(node_id)
-        if is_node_healthy(node, now=current):
-            healthy.append(node_id)
+        if not is_node_healthy(node, now=current):
+            continue
+        if not _node_supports_runtime(node, required_runtime):
+            continue
+
+        healthy.append(node_id)
 
     return healthy
 
@@ -210,10 +261,16 @@ def create_task(
     filename: str,
     payload: bytes,
     assigned_node: str | None,
+    runtime: str = "cloudpickle",
+    task_name: str = "",
+    execution_class: str = "",
+    timeout_ms: int | None = None,
+    shard_index: int | None = None,
+    shard_total: int | None = None,
 ) -> str:
     tid = generate_tid()
     timestamp = now_ts()
-    blob_path = task_blob_path(job_id, tid)
+    blob_path = task_blob_path(job_id, tid, filename)
     write_bytes(blob_path, payload)
 
     redis_client.hset(
@@ -223,7 +280,13 @@ def create_task(
             "job_id": job_id,
             "pid": pid,
             "name": name or "",
+            "task_name": task_name or pathlib.Path(filename).stem,
             "filename": filename,
+            "runtime": runtime,
+            "execution_class": execution_class or "compute",
+            "timeout_ms": "" if timeout_ms is None else str(timeout_ms),
+            "shard_index": "" if shard_index is None else str(shard_index),
+            "shard_total": "" if shard_total is None else str(shard_total),
             "status": "queued",
             "assigned_node": assigned_node or "",
             "blob_path": str(blob_path),
@@ -244,7 +307,7 @@ def create_task(
     if assigned_node:
         redis_client.rpush(f"node:{assigned_node}:queue", tid)
     else:
-        redis_client.rpush("tasks:unassigned", tid)
+        redis_client.rpush(_unassigned_queue_key(runtime), tid)
 
     return tid
 
@@ -270,7 +333,7 @@ def requeue_task(tid: str, assigned_node: str | None) -> None:
     if assigned_node:
         redis_client.rpush(f"node:{assigned_node}:queue", tid)
     else:
-        redis_client.rpush("tasks:unassigned", tid)
+        redis_client.rpush(_unassigned_queue_key(task.get("runtime")), tid)
 
 
 def requeue_stale_tasks() -> None:
@@ -294,16 +357,44 @@ def requeue_stale_tasks() -> None:
             redis_client.hset(f"node:{node_id}", mapping={"current_task": ""})
             continue
 
-        healthy_destinations = get_healthy_node_ids(exclude=node_id)
+        task_runtime = task.get("runtime") or "cloudpickle"
+        healthy_destinations = get_healthy_node_ids(
+            exclude=node_id, required_runtime=task_runtime
+        )
         destination = healthy_destinations[0] if healthy_destinations else None
 
         requeue_task(current_tid, destination)
         redis_client.hset(f"node:{node_id}", mapping={"current_task": ""})
 
 
-def get_available_nodes() -> list[str]:
+def get_available_nodes(*, required_runtime: str | None = None) -> list[str]:
     requeue_stale_tasks()
-    return get_healthy_node_ids()
+    return get_healthy_node_ids(required_runtime=required_runtime)
+
+
+def _pop_queue_tid(
+    queue_key: str,
+    *,
+    node_id: str,
+    allow_unassigned: bool,
+) -> str | None:
+    while True:
+        raw_tid = redis_client.lpop(queue_key)
+        if raw_tid is None:
+            return None
+
+        tid = str(decode_value(raw_tid))
+        task = get_task(tid)
+        if not task:
+            continue
+
+        assigned_node = (task.get("assigned_node") or "").strip()
+        if assigned_node and assigned_node != node_id:
+            continue
+        if not allow_unassigned and not assigned_node:
+            continue
+
+        return tid
 
 
 def claim_task_for_node(node_id: str) -> dict[str, str] | None:
@@ -320,16 +411,30 @@ def claim_task_for_node(node_id: str) -> dict[str, str] | None:
             return existing_task
         redis_client.hset(f"node:{node_id}", mapping={"current_task": ""})
 
-    claimed_tid = redis_client.lpop(f"node:{node_id}:queue")
-    if claimed_tid is None:
-        claimed_tid = redis_client.lpop("tasks:unassigned")
+    tid = _pop_queue_tid(
+        f"node:{node_id}:queue",
+        node_id=node_id,
+        allow_unassigned=False,
+    )
 
-    if claimed_tid is None:
+    if tid is None:
+        for runtime in _node_unassigned_runtimes(node):
+            tid = _pop_queue_tid(
+                _unassigned_queue_key(runtime),
+                node_id=node_id,
+                allow_unassigned=True,
+            )
+            if tid is not None:
+                break
+
+    if tid is None:
         return None
 
-    tid = str(decode_value(claimed_tid))
     task = get_task(tid)
     if not task:
+        return None
+    if not _node_supports_runtime(node, task.get("runtime")):
+        requeue_task(tid, None)
         return None
 
     claim_token = generate_token()
@@ -443,6 +548,29 @@ def fail_task(tid: str, node_id: str, *, error_message: str) -> dict[str, Any]:
     return refresh_job_status(task["job_id"])
 
 
+def _task_summary(task: dict[str, str], tid: str) -> dict[str, Any]:
+    item: dict[str, Any] = {
+        "tid": tid,
+        "task_name": task.get("task_name")
+        or pathlib.Path(task.get("filename") or "").stem,
+        "filename": task.get("filename") or "",
+        "runtime": task.get("runtime") or "cloudpickle",
+        "status": task.get("status") or "queued",
+        "assigned_node": task.get("assigned_node") or "",
+        "error": task.get("error") or None,
+        "created_at": task.get("created_at") or "",
+        "claimed_at": task.get("claimed_at") or "",
+        "completed_at": task.get("completed_at") or "",
+    }
+
+    shard_total = safe_int(task.get("shard_total"))
+    if shard_total > 1:
+        item["shard_index"] = safe_int(task.get("shard_index"))
+        item["shard_total"] = shard_total
+
+    return item
+
+
 def refresh_job_status(job_id: str) -> dict[str, Any]:
     task_ids = get_job_task_ids(job_id)
     counts = {
@@ -464,18 +592,7 @@ def refresh_job_status(job_id: str) -> dict[str, Any]:
             counts[status] = 0
         counts[status] += 1
 
-        tasks.append(
-            {
-                "tid": tid,
-                "filename": task.get("filename") or "",
-                "status": status,
-                "assigned_node": task.get("assigned_node") or "",
-                "error": task.get("error") or None,
-                "created_at": task.get("created_at") or "",
-                "claimed_at": task.get("claimed_at") or "",
-                "completed_at": task.get("completed_at") or "",
-            }
-        )
+        tasks.append(_task_summary(task, tid))
 
     total_tasks = len(task_ids)
     done = total_tasks > 0 and (counts["completed"] + counts["failed"] == total_tasks)
@@ -515,12 +632,7 @@ def get_job_results(job_id: str) -> list[dict[str, Any]]:
         if not task:
             continue
 
-        item: dict[str, Any] = {
-            "tid": tid,
-            "filename": task.get("filename") or "",
-            "status": task.get("status") or "queued",
-            "assigned_node": task.get("assigned_node") or "",
-        }
+        item = _task_summary(task, tid)
 
         if item["status"] == "completed":
             result_bytes = read_bytes(task.get("result_path")) or b""
