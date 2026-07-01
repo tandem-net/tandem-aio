@@ -71,7 +71,12 @@ def _code_section() -> bytes:
     return _section(10, bytes(payload))
 
 
-def build_placeholder_wasm(task: Any, manifest_entry: dict[str, Any]) -> bytes:
+def build_placeholder_wasm(
+    task: Any,
+    manifest_entry: dict[str, Any],
+    *,
+    sdk_info: dict[str, Any] | None = None,
+) -> bytes:
     """Create a minimal valid WASM module annotated with Tandem build metadata.
 
     This is intentionally a scaffold artifact. It produces a real `.wasm` binary
@@ -89,6 +94,7 @@ def build_placeholder_wasm(task: Any, manifest_entry: dict[str, Any]) -> bytes:
     compiler_metadata = {
         "compiler": "tandem-cli",
         "backend": "python-placeholder",
+        "sdk": dict(sdk_info or {}),
         "task": manifest_entry,
         "source_sha256": hashlib.sha256(source.encode("utf-8")).hexdigest(),
     }

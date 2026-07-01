@@ -7,6 +7,18 @@ from .app_config import ProjectConfig
 from .discovery import DiscoveredProject
 
 
+def _manifest_module_name(discovered: DiscoveredProject) -> str | None:
+    source_file = discovered.sdk_descriptor.source_file
+    if isinstance(source_file, str) and source_file:
+        return Path(source_file).stem
+
+    module_name = discovered.sdk_descriptor.module_name
+    if isinstance(module_name, str) and module_name:
+        return module_name
+
+    return None
+
+
 def _relative_or_absolute(path_value: str | None, *, base: Path) -> str | None:
     if path_value is None:
         return None
@@ -173,7 +185,7 @@ def build_manifest(
         "runtime": config.runtime,
         "sdk": discovered.sdk_descriptor.sdk.as_dict(),
         "module": {
-            "name": discovered.sdk_descriptor.module_name,
+            "name": _manifest_module_name(discovered),
             "source_file": _relative_or_absolute(
                 discovered.sdk_descriptor.source_file,
                 base=config.project_root,

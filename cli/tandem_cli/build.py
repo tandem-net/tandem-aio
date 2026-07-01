@@ -29,6 +29,7 @@ class BuildResult:
     output_dir: Path
     manifest_path: Path
     analysis_path: Path
+    sdk_bridge_path: Path
     wasm_paths: tuple[Path, ...]
     task_count: int
     diagnostics: tuple[Diagnostic, ...]
@@ -65,9 +66,10 @@ def build_project(config_path: str | Path, *, strict: bool = True) -> BuildResul
     tasks_dir.mkdir(parents=True, exist_ok=True)
     tandem_dir.mkdir(parents=True, exist_ok=True)
 
-    manifest = build_manifest(config, discovered.tasks)
+    manifest = build_manifest(config, discovered)
     manifest_path = tandem_dir / "manifest.json"
     analysis_path = tandem_dir / "analysis.json"
+    sdk_bridge_path = tandem_dir / "sdk-bridge.json"
 
     entry_lookup = {entry["name"]: entry for entry in manifest["tasks"]}
     wasm_paths: list[Path] = []
@@ -76,7 +78,13 @@ def build_project(config_path: str | Path, *, strict: bool = True) -> BuildResul
         manifest_entry = entry_lookup[task.metadata.name]
         wasm_path = config.output_dir / manifest_entry["wasm"]
         wasm_path.parent.mkdir(parents=True, exist_ok=True)
-        wasm_path.write_bytes(build_placeholder_wasm(task, manifest_entry))
+        wasm_path.write_bytes(
+            build_placeholder_wasm(
+                task,
+                manifest_entry,
+                sdk_info=discovered.sdk_descriptor.sdk.as_dict(),
+            )
+        )
         wasm_paths.append(wasm_path)
 
     manifest_path.write_text(
@@ -96,12 +104,18 @@ def build_project(config_path: str | Path, *, strict: bool = True) -> BuildResul
         + "\n",
         encoding="utf-8",
     )
+    sdk_bridge_path.write_text(
+        json.dumps(discovered.sdk_descriptor.as_dict(), indent=2, sort_keys=True)
+        + "\n",
+        encoding="utf-8",
+    )
 
     return BuildResult(
         config=config,
         output_dir=config.output_dir,
         manifest_path=manifest_path,
         analysis_path=analysis_path,
+        sdk_bridge_path=sdk_bridge_path,
         wasm_paths=tuple(wasm_paths),
         task_count=len(discovered.tasks),
         diagnostics=report.diagnostics,

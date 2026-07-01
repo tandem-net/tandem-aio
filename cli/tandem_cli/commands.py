@@ -88,10 +88,15 @@ def _cmd_init(args: argparse.Namespace) -> int:
 
 def _cmd_inspect(args: argparse.Namespace) -> int:
     config, discovered, report = inspect_project(args.config_path)
+    sdk_info = discovered.sdk_descriptor.sdk
     print(f"Project: {config.name}")
     print(f"Runtime: {config.runtime}")
     print(f"Entry:   {config.entry_path}")
     print(f"Output:  {config.output_dir}")
+    print(
+        f"SDK:     {sdk_info.package} language={sdk_info.language} "
+        f"protocol={sdk_info.protocol_version}"
+    )
     print(f"Tasks:   {len(discovered.tasks)}")
 
     for export_name, task in sorted(discovered.tasks.items()):
@@ -114,7 +119,7 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
 
 def _cmd_manifest(args: argparse.Namespace) -> int:
     config, discovered, _ = inspect_project(args.config_path)
-    manifest = build_manifest(config, discovered.tasks)
+    manifest = build_manifest(config, discovered)
     json.dump(manifest, sys.stdout, indent=2, sort_keys=True)
     sys.stdout.write("\n")
     return 0
@@ -134,8 +139,9 @@ def _cmd_build(args: argparse.Namespace) -> int:
         return 1
 
     print(f"Built {result.task_count} task(s) into {result.output_dir}")
-    print(f"Manifest: {result.manifest_path}")
-    print(f"Analysis: {result.analysis_path}")
+    print(f"Manifest:   {result.manifest_path}")
+    print(f"Analysis:   {result.analysis_path}")
+    print(f"SDK bridge: {result.sdk_bridge_path}")
     print("WASM artifacts:")
     for path in result.wasm_paths:
         print(f"  - {path}")
