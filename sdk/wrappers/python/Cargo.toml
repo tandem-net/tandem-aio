@@ -1,0 +1,13 @@
+[package]
+name = "tandem-python"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "tandem_native"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.22", features = ["extension-module", "abi3-py310"] }
+tandem_core = { package = "tandem-core", path = "../../core" }
