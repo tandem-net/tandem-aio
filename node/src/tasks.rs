@@ -35,11 +35,14 @@ except Exception:
     sys.exit(1)
 "#;
 
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, Clone, Debug, Default)]
 pub struct Metrics {
-    pub latency: f32,
-    pub download: f32,
-    pub upload: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub latency: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub download: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub upload: Option<f32>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -84,6 +87,23 @@ fn _node_registration_token() -> Option<String> {
         return None;
     }
     Some(trimmed.to_string())
+}
+
+fn _register_payload(metrics: &Metrics) -> serde_json::Value {
+    let mut payload = serde_json::Map::new();
+    payload.insert("supports_wasm".to_string(), serde_json::Value::Bool(true));
+
+    if let Some(latency) = metrics.latency {
+        payload.insert("latency".to_string(), json!(latency));
+    }
+    if let Some(download) = metrics.download {
+        payload.insert("download".to_string(), json!(download));
+    }
+    if let Some(upload) = metrics.upload {
+        payload.insert("upload".to_string(), json!(upload));
+    }
+
+    serde_json::Value::Object(payload)
 }
 
 fn _call_tandem_entry(store: &mut Store<()>, instance: &Instance) -> Result<Vec<u8>, DynError> {
@@ -170,14 +190,7 @@ pub async fn register(
     url: impl Into<String>,
     metrics: &Metrics,
 ) -> Result<NodeIdentity, DynError> {
-    let payload = json!({
-        "latency": metrics.latency,
-        "download": metrics.download,
-        "upload": metrics.upload,
-        "supports_wasm": true,
-    });
-
-    let mut request = client.post(url.into()).json(&payload);
+    let mut request = client.post(url.into()).json(&_register_payload(metrics));
     if let Some(token) = _node_registration_token() {
         request = request.bearer_auth(token);
     }

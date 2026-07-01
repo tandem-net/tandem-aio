@@ -330,6 +330,7 @@ def _cmd_start(args: argparse.Namespace) -> int:
     print(f"Initial counts: {_format_counts(result.counts)}")
 
     if args.no_wait:
+        print(f"Job token:   {result.job_token}")
         print(f"Status URL:  {result.status_url}")
         print(f"Results URL: {result.results_url}")
         return 0

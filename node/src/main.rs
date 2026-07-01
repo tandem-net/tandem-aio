@@ -14,6 +14,18 @@ fn server_base_url() -> String {
         .to_string()
 }
 
+fn _env_flag(name: &str) -> bool {
+    env::var(name)
+        .ok()
+        .map(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(false)
+}
+
 fn _task_label(task: &tasks::ClaimedTask) -> String {
     let base = if task.task_name.trim().is_empty() {
         task.filename.clone()
@@ -52,38 +64,43 @@ async fn main() {
     let download_benchmark_url = format!("{}/nodes/download", server_base_url);
     let upload_benchmark_url = format!("{}/nodes/upload", server_base_url);
 
-    let download_speed =
-        match tasks::benchmark_download(client.clone(), download_benchmark_url).await {
-            Ok(speed) => speed,
+    let metrics = if _env_flag("TANDEM_NODE_BENCHMARK_STARTUP") {
+        let download = match tasks::benchmark_download(client.clone(), download_benchmark_url).await
+        {
+            Ok(speed) => Some(speed),
             Err(error) => {
                 eprintln!("download benchmark failed: {}", error);
-                0.0
+                None
             }
         };
 
-    let upload_bytes = 300 * 1024 * 1024;
-    let upload_speed =
-        match tasks::benchmark_upload(client.clone(), upload_benchmark_url, upload_bytes).await {
-            Ok(speed) => speed,
+        let upload_bytes = 300 * 1024 * 1024;
+        let upload =
+            match tasks::benchmark_upload(client.clone(), upload_benchmark_url, upload_bytes).await
+            {
+                Ok(speed) => Some(speed),
+                Err(error) => {
+                    eprintln!("upload benchmark failed: {}", error);
+                    None
+                }
+            };
+
+        let latency_start = Instant::now();
+        let latency = match client.get(&server_base_url).send().await {
+            Ok(_) => Some(latency_start.elapsed().as_secs_f32() * 1000.0),
             Err(error) => {
-                eprintln!("upload benchmark failed: {}", error);
-                0.0
+                eprintln!("latency probe failed: {}", error);
+                None
             }
         };
 
-    let latency_start = Instant::now();
-    let latency = match client.get(&server_base_url).send().await {
-        Ok(_) => latency_start.elapsed().as_secs_f32() * 1000.0,
-        Err(error) => {
-            eprintln!("latency probe failed: {}", error);
-            0.0
+        tasks::Metrics {
+            latency,
+            download,
+            upload,
         }
-    };
-
-    let metrics = tasks::Metrics {
-        latency,
-        download: download_speed,
-        upload: upload_speed,
+    } else {
+        tasks::Metrics::default()
     };
 
     let identity = match tasks::register(client.clone(), register_url, &metrics).await {

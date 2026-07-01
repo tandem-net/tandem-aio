@@ -79,6 +79,12 @@ def _build_job_response(
     summary = refresh_job_status(job_id)
     base_url = request.host_url.rstrip("/")
 
+    task_ids = [
+        task.get("tid")
+        for task in summary["tasks"]
+        if isinstance(task, dict) and task.get("tid")
+    ]
+
     return (
         jsonify(
             {
@@ -87,7 +93,7 @@ def _build_job_response(
                 "job_id": job_id,
                 "job_token": job_token,
                 "name": name,
-                "task_ids": summary["tasks"],
+                "task_ids": task_ids,
                 "counts": summary["counts"],
                 "status": summary["status"],
                 "status_url": f"{base_url}/start/{job_id}",
