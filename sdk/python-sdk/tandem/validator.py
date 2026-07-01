@@ -16,17 +16,6 @@ imported, not during a build or at first call. The compiler re-runs
 the same checks with full symbol resolution during `tandem build` --
 but this pass exists so users get fast feedback without invoking the
 compiler.
-
-Implementation: AST walk over the function's source text. AST is
-preferable to bytecode for this because it gives exact line numbers,
-exact names, and matches what the compiler's own semantic analysis phase
-will do.
-
-Known limitations (intentionally not hidden):
-  - Only catches direct Name reads. Indirect access via globals(),
-    getattr, eval/exec is not caught.
-  - Calls to other functions are not transitively validated here. The
-    compiler's full-graph analysis will catch those.
 """
 
 from __future__ import annotations

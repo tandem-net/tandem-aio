@@ -1,32 +1,3 @@
-"""
-tandem.split(runnable, chunk=1) -> g(list[arg]) -> list[result]
-
-Marks a function as a Tandem split task and returns a wrapper g that
-takes a list of arguments and calls the original function for each one.
-The wrapper:
-  - validates split-independence of runnable at call time
-  - attaches metadata the compiler reads during `tandem build`
-  - locally, calls runnable(item) for each item and returns results in order
-
-It does NOT chunk or dispatch to nodes. Chunking is a server/node
-concern determined at dispatch time using the chunk hint in the manifest.
-
-    def foo(x):
-        return x + 3
-
-    goo = tandem.split(foo, 5)
-    goo([7, 2, 9])   # locally: [foo(7), foo(2), foo(9)] == [10, 5, 12]
-                     # on a node: dispatched in chunks of 5 per node
-
-Parameters
-----------
-runnable : callable
-    A single-argument, split-independent function.
-chunk : int
-    Hint to the server: group this many items per node when splitting.
-    Default 1.
-"""
-
 from __future__ import annotations
 
 import functools
@@ -38,21 +9,37 @@ A = TypeVar("A")
 R = TypeVar("R")
 
 
-def split(runnable: Callable[[A], R], chunk: int = 1) -> Callable[[Sequence[A]], list[R]]:
+def split(chunk: int = 1) -> Callable:
     """
-    Validate independence of runnable, attach metadata, return a wrapper.
+    Decorator factory. Marks a function as a Tandem split task.
 
-    Raises TandemValidationError immediately if runnable reads any
-    global that is not declared tandem.immutable().
+    The server will dispatch calls in chunks of `chunk` items per node.
+    The wrapper takes a list of arguments and returns results in the
+    same order.
+
+        @tandem.split(chunk=2)
+        def foo(x):
+            return x + 3
+
+        foo([7, 2, 9, 3, 7])
+        # chunks: [7, 2], [9, 3], [7] -> [10, 5, 12, 6, 10]
+
+    Parameters
+    ----------
+    chunk : int
+        Items per node when the server splits the input list. Default 1.
     """
-    validate_independence(runnable)
-    chunk_size = max(1, chunk)
+    def decorator(func: Callable[[A], R]) -> Callable[[Sequence[A]], list[R]]:
+        validate_independence(func)
+        chunk_size = max(1, chunk)
 
-    @functools.wraps(runnable)
-    def g(args: Sequence[Any]) -> list[Any]:
-        return [runnable(item) for item in args]
+        @functools.wraps(func)
+        def wrapper(args: Sequence[Any]) -> list[Any]:
+            return [func(item) for item in args]
 
-    g.__tandem_kind__ = "split"          # type: ignore[attr-defined]
-    g.__tandem_chunk__ = chunk_size      # type: ignore[attr-defined]
-    g.__tandem_original__ = runnable     # type: ignore[attr-defined]
-    return g
+        wrapper.__tandem_kind__ = "split"       # type: ignore[attr-defined]
+        wrapper.__tandem_chunk__ = chunk_size   # type: ignore[attr-defined]
+        wrapper.__tandem_original__ = func      # type: ignore[attr-defined]
+        return wrapper  # type: ignore[return-value]
+
+    return decorator

@@ -1,28 +1,21 @@
 """
 @tandem.compute(batch=1, timeout_ms=50)
 
-Marks a function as a Tandem compute task. The decorator:
-  - validates split-independence at decoration time
-  - attaches metadata attributes the compiler reads during `tandem build`
-  - returns the original function unchanged
-
-It does NOT batch calls, dispatch to nodes, or execute anything.
-Batching and dispatch are compiler + node concerns, not SDK concerns.
+Decorator that marks a function as a Tandem compute task, which will split function calls into batches and sent to separate nodes.
 
     @tandem.compute(batch=3, timeout_ms=50)
     def foo(x):
         return x * 2
-
-    foo(3)   # calls the real function directly, locally
-             # batching only happens when running on a Tandem node
+        
+    # foo(1), foo(2), foo(3), foo(4) will be dispatched as two batches: [foo(1), foo(2), foo(3)] and [foo(4)].
 
 Parameters
 ----------
 batch : int
-    Hint to the server: collect this many calls before dispatching as
+    The server will collect this many calls before dispatching as
     a group to a node. Default 1 (dispatch immediately).
 timeout_ms : int
-    Hint to the server: dispatch whatever has been collected after
+    The server will dispatch whatever has been collected after
     this many milliseconds even if batch hasn't been reached.
     Default 50ms.
 """

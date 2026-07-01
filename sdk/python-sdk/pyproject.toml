@@ -5,10 +5,8 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "tandem-sdk"
 version = "0.1.0"
-description = "Tandem Python SDK -- marker layer for declaring distributable tasks"
-readme = "README.md"
+description = "The Tandem Python SDK provides marker decorators and helper types for defining Tandem-discoverable tasks in Python."
 requires-python = ">=3.9"
-license = { text = "Proprietary" }
 authors = [{ name = "Tandem" }]
 dependencies = []
 

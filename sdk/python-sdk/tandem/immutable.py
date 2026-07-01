@@ -1,11 +1,11 @@
 """
 tandem.Immutable
 
-A read-only wrapper for module-level constants. The independence
-validator allows tandem tasks to freely read names that hold an
-Immutable; all other module globals are rejected.
+A read-only wrapper for module-level constants. All Tandem computed
+tasks must only read globals that are wrapped in tandem.Immutable,
+or else the independence validator will raise an error.
 
-Supported forms
+Usage forms:
 ---------------
     NUM = Immutable(15)
     NUM = Immutable[int](15)
@@ -16,8 +16,7 @@ Supported forms
 Every form stores the value inside the wrapper. Access the inner value
 via .value, or access its attributes directly (proxied via __getattr__).
 
-The wrapper is strictly read-only -- any attempt to set an attribute
-raises AttributeError.
+Any attempt to modify the wrapper raises AttributeError.
 """
 
 from __future__ import annotations

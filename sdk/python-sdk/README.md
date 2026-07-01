@@ -7,13 +7,13 @@ The Tandem Python SDK provides marker decorators and helper types for defining T
 From another project, install it directly from this repository path:
 
 ```bash
-pip install /absolute/path/to/tandem-aio/sdk/python-sdk
+pip install /path/to/python-sdk
 ```
 
 For editable development:
 
 ```bash
-pip install -e /absolute/path/to/tandem-aio/sdk/python-sdk
+pip install -e /path/to/python-sdk
 ```
 
 ## Import
@@ -25,4 +25,4 @@ from tandem import Immutable, compute, split
 
 ## Notes
 
-This package is the pure-Python SDK marker layer. It does not compile or execute tasks remotely by itself.
+This package is the Python SDK marker layer.
