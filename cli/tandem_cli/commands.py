@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import sys
-from pathlib import Path
-from typing import Sequence
+import time
+from typing import Any, Sequence
 
 from .analysis import Diagnostic
-from .app_config import load_project_config, write_project_config
+from .app_config import write_project_config
 from .build import AnalysisFailure, build_project, clean_project, inspect_project
 from .manifest import build_manifest
+from .remote import deploy_project, fetch_job_results, start_project
 
 
 def _format_diagnostic(diagnostic: Diagnostic) -> str:
@@ -20,10 +22,124 @@ def _format_diagnostic(diagnostic: Diagnostic) -> str:
     )
 
 
+def _add_remote_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--server-url",
+        default=None,
+        help="Server base URL. Falls back to TANDEM_SERVER_URL or http://127.0.0.1:6767.",
+    )
+    parser.add_argument(
+        "--api-key",
+        default=None,
+        help="User API key. Falls back to TANDEM_API_KEY.",
+    )
+
+
+def _format_counts(counts: dict[str, Any]) -> str:
+    ordered = ["queued", "claimed", "running", "completed", "failed"]
+    parts: list[str] = []
+
+    for key in ordered:
+        if key in counts:
+            parts.append(f"{key}={counts[key]}")
+
+    for key in sorted(counts):
+        if key not in ordered:
+            parts.append(f"{key}={counts[key]}")
+
+    return ", ".join(parts) if parts else "no counts yet"
+
+
+def _decode_result_payload(result_b64: str) -> Any:
+    raw = base64.b64decode(result_b64)
+    if not raw:
+        return None
+
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return {"binary_b64": result_b64}
+
+    stripped = text.strip()
+    if not stripped:
+        return None
+
+    try:
+        return json.loads(stripped)
+    except json.JSONDecodeError:
+        return text
+
+
+def _format_result_value(value: Any) -> str:
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, indent=2, sort_keys=True)
+    if value is None:
+        return "null"
+    return str(value)
+
+
+def _task_label(item: dict[str, Any]) -> str:
+    label = (
+        str(item.get("task_name") or "").strip()
+        or str(item.get("filename") or "").strip()
+        or str(item.get("tid") or "task")
+    )
+
+    shard_total = item.get("shard_total")
+    shard_index = item.get("shard_index")
+    if (
+        isinstance(shard_total, int)
+        and isinstance(shard_index, int)
+        and shard_total > 1
+    ):
+        label = f"{label} shard {shard_index + 1}/{shard_total}"
+
+    assigned_node = str(item.get("assigned_node") or "").strip()
+    if assigned_node:
+        label = f"{label} on {assigned_node}"
+
+    return label
+
+
+def _print_job_results(payload: dict[str, Any]) -> None:
+    job_id = payload.get("job_id") or ""
+    status = payload.get("status") or "unknown"
+    print(f"Job {job_id} finished with status {status}")
+
+    results = payload.get("results")
+    if not isinstance(results, list) or not results:
+        print("No task results were returned.")
+        return
+
+    for item in results:
+        if not isinstance(item, dict):
+            continue
+
+        print(f"\n- {_task_label(item)}")
+        if item.get("status") == "completed":
+            result_b64 = item.get("result_b64")
+            if isinstance(result_b64, str):
+                print(_format_result_value(_decode_result_payload(result_b64)))
+            else:
+                print("completed, but no payload was returned")
+            continue
+
+        error_message = str(item.get("error") or "task failed")
+        print(error_message)
+
+
+def _report_analysis_failure(exc: AnalysisFailure) -> int:
+    print(str(exc), file=sys.stderr)
+    print("Diagnostics:", file=sys.stderr)
+    for diagnostic in exc.report.diagnostics:
+        print(f"  {_format_diagnostic(diagnostic)}", file=sys.stderr)
+    return 1
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tandem-cli",
-        description="Discover Tandem SDK tasks and build placeholder WASM artifacts.",
+        description="Discover Tandem SDK tasks, build `.wasm` artifacts, and run them through a Tandem server.",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -65,6 +181,41 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Write artifacts even if static validation reports errors.",
     )
+
+    deploy_parser = subparsers.add_parser(
+        "deploy",
+        help="Create a deployment on the server and print its pid.",
+    )
+    deploy_parser.add_argument("config_path", help="Path to the Tandem TOML config.")
+    _add_remote_options(deploy_parser)
+
+    start_parser = subparsers.add_parser(
+        "start",
+        help="Build the project, upload its `.wasm` artifacts, and optionally wait for results.",
+    )
+    start_parser.add_argument("config_path", help="Path to the Tandem TOML config.")
+    start_parser.add_argument(
+        "--pid",
+        default=None,
+        help="Existing deployment pid. If omitted, Tandem creates one first.",
+    )
+    start_parser.add_argument(
+        "--allow-analysis-errors",
+        action="store_true",
+        help="Upload artifacts even if static validation reports errors.",
+    )
+    start_parser.add_argument(
+        "--no-wait",
+        action="store_true",
+        help="Queue the job and return immediately instead of polling for results.",
+    )
+    start_parser.add_argument(
+        "--poll-interval",
+        type=float,
+        default=0.5,
+        help="Seconds between result polls while waiting.",
+    )
+    _add_remote_options(start_parser)
 
     clean_parser = subparsers.add_parser(
         "clean", help="Remove generated build artifacts."
@@ -132,11 +283,7 @@ def _cmd_build(args: argparse.Namespace) -> int:
             strict=not args.allow_analysis_errors,
         )
     except AnalysisFailure as exc:
-        print(str(exc), file=sys.stderr)
-        print("Diagnostics:", file=sys.stderr)
-        for diagnostic in exc.report.diagnostics:
-            print(f"  {_format_diagnostic(diagnostic)}", file=sys.stderr)
-        return 1
+        return _report_analysis_failure(exc)
 
     print(f"Built {result.task_count} task(s) into {result.output_dir}")
     print(f"Manifest:   {result.manifest_path}")
@@ -152,6 +299,59 @@ def _cmd_build(args: argparse.Namespace) -> int:
             print(f"  {_format_diagnostic(diagnostic)}")
 
     return 0
+
+
+def _cmd_deploy(args: argparse.Namespace) -> int:
+    result = deploy_project(
+        args.config_path,
+        server_url=args.server_url,
+        api_key=args.api_key,
+    )
+    print(f"Deployment name: {result.name}")
+    print(f"PID: {result.pid}")
+    return 0
+
+
+def _cmd_start(args: argparse.Namespace) -> int:
+    try:
+        result = start_project(
+            args.config_path,
+            server_url=args.server_url,
+            api_key=args.api_key,
+            pid=args.pid,
+            strict=not args.allow_analysis_errors,
+        )
+    except AnalysisFailure as exc:
+        return _report_analysis_failure(exc)
+
+    print(f"Built artifacts into {result.output_dir}")
+    print(f"Deployment pid: {result.pid}")
+    print(f"Queued job: {result.job_id}")
+    print(f"Initial counts: {_format_counts(result.counts)}")
+
+    if args.no_wait:
+        print(f"Status URL:  {result.status_url}")
+        print(f"Results URL: {result.results_url}")
+        return 0
+
+    print("Waiting for results...")
+    last_counts: dict[str, Any] | None = result.counts
+    poll_interval = max(args.poll_interval, 0.1)
+
+    while True:
+        status_code, payload = fetch_job_results(result, api_key=args.api_key)
+        raw_counts = payload.get("counts")
+        counts: dict[str, Any] = raw_counts if isinstance(raw_counts, dict) else {}
+
+        if counts != last_counts:
+            print(f"Counts: {_format_counts(counts)}")
+            last_counts = counts
+
+        if status_code == 200:
+            _print_job_results(payload)
+            return 0 if payload.get("status") == "completed" else 1
+
+        time.sleep(poll_interval)
 
 
 def _cmd_clean(args: argparse.Namespace) -> int:
@@ -173,6 +373,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _cmd_manifest(args)
         if args.command == "build":
             return _cmd_build(args)
+        if args.command == "deploy":
+            return _cmd_deploy(args)
+        if args.command == "start":
+            return _cmd_start(args)
         if args.command == "clean":
             return _cmd_clean(args)
     except Exception as exc:
