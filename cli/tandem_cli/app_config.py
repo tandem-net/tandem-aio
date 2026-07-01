@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .sdk_registry import get_runtime_sdk, resolve_sdk_path, supported_runtimes
+
 try:
     import tomllib
 except ModuleNotFoundError:  # pragma: no cover - Python 3.10 fallback.
@@ -21,7 +23,9 @@ class ProjectConfig:
     version: str
     entry_path: Path
     output_dir: Path
-    sdk_python_path: Path | None
+    sdk_path: Path | None
+    sdk_package_name: str
+    sdk_import_name: str
 
     def as_dict(self) -> dict[str, str | None]:
         return {
@@ -29,17 +33,13 @@ class ProjectConfig:
             "project_root": str(self.project_root),
             "name": self.name,
             "runtime": self.runtime,
-            "version": self.version,
+            "version": str(self.version),
             "entry_path": str(self.entry_path),
             "output_dir": str(self.output_dir),
-            "sdk_python_path": (
-                str(self.sdk_python_path) if self.sdk_python_path is not None else None
-            ),
+            "sdk_path": str(self.sdk_path) if self.sdk_path is not None else None,
+            "sdk_package_name": self.sdk_package_name,
+            "sdk_import_name": self.sdk_import_name,
         }
-
-
-def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[2]
 
 
 def _require_table(data: dict[str, Any], key: str) -> dict[str, Any]:
@@ -84,9 +84,11 @@ def load_project_config(path: str | Path) -> ProjectConfig:
 
     name = _coerce_string(project.get("name"), "project.name")
     runtime = _coerce_string(project.get("runtime", "python"), "project.runtime")
-    if runtime != "python":
+    sdk_spec = get_runtime_sdk(runtime)
+    if sdk_spec is None:
         raise ValueError(
-            f"Unsupported runtime {runtime!r}. This CLI scaffold currently supports only Python projects."
+            f"Unsupported runtime {runtime!r}. Supported runtimes: "
+            f"{', '.join(supported_runtimes())}."
         )
 
     version = _coerce_string(project.get("version", "0.1.0"), "project.version")
@@ -106,19 +108,11 @@ def load_project_config(path: str | Path) -> ProjectConfig:
         raise ValueError(f"Configured Python entry path is not a file: {entry_path}")
 
     output_dir = (project_root / output_value).resolve()
-
-    sdk_value = project.get("sdk_python_path")
-    if sdk_value is None:
-        default_sdk_path = (_repo_root() / "sdk" / "wrappers" / "python").resolve()
-        sdk_python_path = default_sdk_path if default_sdk_path.exists() else None
-    else:
-        sdk_python_path = (
-            project_root / _coerce_string(sdk_value, "project.sdk_python_path")
-        ).resolve()
-        if not sdk_python_path.exists():
-            raise FileNotFoundError(
-                f"Could not locate Tandem Python SDK package at {sdk_python_path}"
-            )
+    sdk_path = resolve_sdk_path(
+        runtime=runtime,
+        project_root=project_root,
+        project_table=project,
+    )
 
     return ProjectConfig(
         config_path=config_path,
@@ -128,7 +122,9 @@ def load_project_config(path: str | Path) -> ProjectConfig:
         version=version,
         entry_path=entry_path,
         output_dir=output_dir,
-        sdk_python_path=sdk_python_path,
+        sdk_path=sdk_path,
+        sdk_package_name=sdk_spec.package_name,
+        sdk_import_name=sdk_spec.import_name,
     )
 
 

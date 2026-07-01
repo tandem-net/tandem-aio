@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib
 import importlib.util
 import sys
 from contextlib import contextmanager
@@ -64,8 +65,8 @@ def load_entry_module(config: ProjectConfig) -> ModuleType:
 
 def _sdk_import_paths(config: ProjectConfig) -> list[Path]:
     paths = [config.project_root, config.entry_path.parent]
-    if config.sdk_python_path is not None:
-        paths.insert(0, config.sdk_python_path)
+    if config.sdk_path is not None:
+        paths.insert(0, config.sdk_path)
     return paths
 
 
@@ -76,11 +77,14 @@ def discover_project(config: ProjectConfig) -> DiscoveredProject:
         module = load_entry_module(config)
 
         try:
-            from tandem import describe_target  # Imported after SDK path is resolved.
+            sdk_module = importlib.import_module(config.sdk_import_name)
+            describe_target = sdk_module.describe_target
         except ImportError as exc:
             raise RuntimeError(
-                "Could not import the Tandem Python SDK. Install `tandem` or set "
-                "`project.sdk_python_path` in the CLI config."
+                "Could not import the Tandem runtime SDK "
+                f"`{config.sdk_import_name}` for runtime `{config.runtime}`. "
+                "The CLI now bundles runtime SDKs automatically; if you need a "
+                "custom SDK checkout, set `project.sdk_path` in the CLI config."
             ) from exc
 
         sdk_descriptor = describe_target(module)

@@ -30,6 +30,12 @@ Then verify it:
 tandem --help
 ```
 
+The CLI now bundles the runtime SDKs it knows about. Today that means a Python
+project with `runtime = "python"` can be inspected and built without needing a
+separate repo-relative SDK checkout. If you need to point at a custom SDK copy,
+set `project.sdk_path` in `tandem.toml` (the legacy `project.sdk_python_path`
+key still works too).
+
 ## Repo-local note
 
 This repo also contains some older Node/TypeScript CLI scaffolding files in the
