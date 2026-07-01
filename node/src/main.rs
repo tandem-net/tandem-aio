@@ -14,8 +14,48 @@ fn server_base_url() -> String {
         .to_string()
 }
 
+fn _env_flag(name: &str) -> bool {
+    env::var(name)
+        .ok()
+        .map(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(false)
+}
+
+fn _task_label(task: &tasks::ClaimedTask) -> String {
+    let base = if task.task_name.trim().is_empty() {
+        task.filename.clone()
+    } else {
+        task.task_name.clone()
+    };
+
+    match (task.shard_index, task.shard_total) {
+        (Some(index), Some(total)) if total > 1 => {
+            format!("{} shard {}/{}", base, index + 1, total)
+        }
+        _ => base,
+    }
+}
+
+async fn _execute_claimed_task(
+    task: &tasks::ClaimedTask,
+    payload: Vec<u8>,
+    task_timeout: Option<Duration>,
+) -> Result<Vec<u8>, tasks::DynError> {
+    match task.runtime.trim() {
+        "wasm" => tasks::execute_wasm_task(payload, task_timeout).await,
+        _ => tasks::execute_cloudpickle_task(payload, task_timeout).await,
+    }
+}
+
 #[tokio::main]
 async fn main() {
+    dotenvy::dotenv().ok();
+
     let client = Client::new();
     let server_base_url = server_base_url();
 
@@ -26,38 +66,43 @@ async fn main() {
     let download_benchmark_url = format!("{}/nodes/download", server_base_url);
     let upload_benchmark_url = format!("{}/nodes/upload", server_base_url);
 
-    let download_speed =
-        match tasks::benchmark_download(client.clone(), download_benchmark_url).await {
-            Ok(speed) => speed,
+    let metrics = if _env_flag("TANDEM_NODE_BENCHMARK_STARTUP") {
+        let download = match tasks::benchmark_download(client.clone(), download_benchmark_url).await
+        {
+            Ok(speed) => Some(speed),
             Err(error) => {
                 eprintln!("download benchmark failed: {}", error);
-                0.0
+                None
             }
         };
 
-    let upload_bytes = 300 * 1024 * 1024;
-    let upload_speed =
-        match tasks::benchmark_upload(client.clone(), upload_benchmark_url, upload_bytes).await {
-            Ok(speed) => speed,
+        let upload_bytes = 300 * 1024 * 1024;
+        let upload =
+            match tasks::benchmark_upload(client.clone(), upload_benchmark_url, upload_bytes).await
+            {
+                Ok(speed) => Some(speed),
+                Err(error) => {
+                    eprintln!("upload benchmark failed: {}", error);
+                    None
+                }
+            };
+
+        let latency_start = Instant::now();
+        let latency = match client.get(&server_base_url).send().await {
+            Ok(_) => Some(latency_start.elapsed().as_secs_f32() * 1000.0),
             Err(error) => {
-                eprintln!("upload benchmark failed: {}", error);
-                0.0
+                eprintln!("latency probe failed: {}", error);
+                None
             }
         };
 
-    let latency_start = Instant::now();
-    let latency = match client.get(&server_base_url).send().await {
-        Ok(_) => latency_start.elapsed().as_secs_f32() * 1000.0,
-        Err(error) => {
-            eprintln!("latency probe failed: {}", error);
-            0.0
+        tasks::Metrics {
+            latency,
+            download,
+            upload,
         }
-    };
-
-    let metrics = tasks::Metrics {
-        latency,
-        download: download_speed,
-        upload: upload_speed,
+    } else {
+        tasks::Metrics::default()
     };
 
     let identity = match tasks::register(client.clone(), register_url, &metrics).await {
@@ -106,20 +151,16 @@ async fn main() {
     loop {
         match tasks::claim_task(client.clone(), claim_url.clone(), &identity).await {
             Ok(Some(task)) => {
+                let task_label = _task_label(&task);
                 println!(
-                    "Claimed task {} for job {} ({})",
-                    task.tid, task.job_id, task.filename
+                    "Claimed task {} for job {} ({}, runtime={})",
+                    task.tid, task.job_id, task_label, task.runtime
                 );
 
+                let task_timeout = tasks::resolve_task_timeout(&task, task_timeout_secs);
                 let execution_result =
                     match tasks::download_task_payload(client.clone(), &task, &identity).await {
-                        Ok(payload) => {
-                            tasks::execute_cloudpickle_task(
-                                payload,
-                                Duration::from_secs(task_timeout_secs),
-                            )
-                            .await
-                        }
+                        Ok(payload) => _execute_claimed_task(&task, payload, task_timeout).await,
                         Err(error) => Err(error),
                     };
 
@@ -136,7 +177,7 @@ async fn main() {
                         {
                             eprintln!("failed to submit result for {}: {}", task.tid, error);
                         } else {
-                            println!("Completed task {}", task.tid);
+                            println!("Completed task {} ({})", task.tid, task_label);
                         }
                     }
                     Err(error) => {

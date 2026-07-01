@@ -1,14 +1,16 @@
-use base64::Engine;
+use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::env;
 use std::fs;
 use std::process::Stdio;
 use std::time::Duration;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 use tokio::time::timeout;
+use wasmtime::{Engine, Instance, Module, Store};
 
 use crate::measure;
 
@@ -33,11 +35,14 @@ except Exception:
     sys.exit(1)
 "#;
 
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, Clone, Debug, Default)]
 pub struct Metrics {
-    pub latency: f32,
-    pub download: f32,
-    pub upload: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub latency: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub download: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub upload: Option<f32>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -56,9 +61,92 @@ struct RegisterResponse {
 pub struct ClaimedTask {
     pub tid: String,
     pub job_id: String,
+    #[serde(default)]
+    pub task_name: String,
     pub filename: String,
+    #[serde(default = "_default_runtime")]
+    pub runtime: String,
     pub claim_token: String,
     pub download_url: String,
+    #[serde(default)]
+    pub timeout_ms: Option<u64>,
+    #[serde(default)]
+    pub shard_index: Option<u64>,
+    #[serde(default)]
+    pub shard_total: Option<u64>,
+}
+
+fn _default_runtime() -> String {
+    String::from("cloudpickle")
+}
+
+fn _node_registration_token() -> Option<String> {
+    let token = env::var("TANDEM_NODE_REGISTRATION_TOKEN").ok()?;
+    let trimmed = token.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    Some(trimmed.to_string())
+}
+
+fn _register_payload(metrics: &Metrics) -> serde_json::Value {
+    let mut payload = serde_json::Map::new();
+    payload.insert("supports_wasm".to_string(), serde_json::Value::Bool(true));
+
+    if let Some(latency) = metrics.latency {
+        payload.insert("latency".to_string(), json!(latency));
+    }
+    if let Some(download) = metrics.download {
+        payload.insert("download".to_string(), json!(download));
+    }
+    if let Some(upload) = metrics.upload {
+        payload.insert("upload".to_string(), json!(upload));
+    }
+
+    serde_json::Value::Object(payload)
+}
+
+fn _call_tandem_entry(store: &mut Store<()>, instance: &Instance) -> Result<Vec<u8>, DynError> {
+    if let Ok(entry) = instance.get_typed_func::<(), ()>(&mut *store, "tandem_entry") {
+        entry.call(&mut *store, ())?;
+        // zatar would pick the task that returns nothing.
+        return Ok(b"null".to_vec());
+    }
+
+    if let Ok(entry) = instance.get_typed_func::<(), i32>(&mut *store, "tandem_entry") {
+        return Ok(serde_json::to_vec(&entry.call(&mut *store, ())?)?);
+    }
+    if let Ok(entry) = instance.get_typed_func::<(), i64>(&mut *store, "tandem_entry") {
+        return Ok(serde_json::to_vec(&entry.call(&mut *store, ())?)?);
+    }
+    if let Ok(entry) = instance.get_typed_func::<(), f32>(&mut *store, "tandem_entry") {
+        return Ok(serde_json::to_vec(&entry.call(&mut *store, ())?)?);
+    }
+    if let Ok(entry) = instance.get_typed_func::<(), f64>(&mut *store, "tandem_entry") {
+        return Ok(serde_json::to_vec(&entry.call(&mut *store, ())?)?);
+    }
+
+    Err(String::from(
+        "`tandem_entry` must take no parameters and return either unit or a numeric value",
+    )
+    .into())
+}
+
+fn _execute_wasm_task_sync(payload: Vec<u8>) -> Result<Vec<u8>, DynError> {
+    let engine = Engine::default();
+    let module = Module::from_binary(&engine, &payload)?;
+    let mut store = Store::new(&engine, ());
+    let instance = Instance::new(&mut store, &module, &[])?;
+    _call_tandem_entry(&mut store, &instance)
+}
+
+pub fn resolve_task_timeout(task: &ClaimedTask, default_timeout_secs: u64) -> Option<Duration> {
+    match task.timeout_ms {
+        Some(0) => None,
+        Some(timeout_ms) => Some(Duration::from_millis(timeout_ms)),
+        None if default_timeout_secs == 0 => None,
+        None => Some(Duration::from_secs(default_timeout_secs)),
+    }
 }
 
 pub async fn benchmark_download(client: Client, url: impl Into<String>) -> Result<f32, DynError> {
@@ -102,12 +190,12 @@ pub async fn register(
     url: impl Into<String>,
     metrics: &Metrics,
 ) -> Result<NodeIdentity, DynError> {
-    let response = client
-        .post(url.into())
-        .json(metrics)
-        .send()
-        .await?
-        .error_for_status()?;
+    let mut request = client.post(url.into()).json(&_register_payload(metrics));
+    if let Some(token) = _node_registration_token() {
+        request = request.bearer_auth(token);
+    }
+
+    let response = request.send().await?.error_for_status()?;
 
     let parsed: RegisterResponse = response.json().await?;
     let identity = NodeIdentity {
@@ -249,7 +337,7 @@ pub async fn submit_task_failure(
 
 pub async fn execute_cloudpickle_task(
     payload: Vec<u8>,
-    task_timeout: Duration,
+    task_timeout: Option<Duration>,
 ) -> Result<Vec<u8>, DynError> {
     let python_bin =
         std::env::var("TANDEM_NODE_PYTHON").unwrap_or_else(|_| String::from("python3"));
@@ -269,7 +357,12 @@ pub async fn execute_cloudpickle_task(
     stdin.write_all(&payload).await?;
     drop(stdin);
 
-    let output = timeout(task_timeout, child.wait_with_output()).await??;
+    let output = match task_timeout {
+        Some(limit) => timeout(limit, child.wait_with_output())
+            .await
+            .map_err(|_| String::from("python worker timed out"))??,
+        None => child.wait_with_output().await?,
+    };
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
@@ -289,4 +382,21 @@ pub async fn execute_cloudpickle_task(
 
     let decoded = BASE64.decode(trimmed)?;
     Ok(decoded)
+}
+
+pub async fn execute_wasm_task(
+    payload: Vec<u8>,
+    task_timeout: Option<Duration>,
+) -> Result<Vec<u8>, DynError> {
+    let worker = tokio::task::spawn_blocking(move || _execute_wasm_task_sync(payload));
+
+    let worker_result = match task_timeout {
+        Some(limit) => timeout(limit, worker)
+            .await
+            .map_err(|_| String::from("wasm task timed out"))?,
+        None => worker.await,
+    };
+
+    let wasm_result = worker_result.map_err(|error| format!("wasm worker join error: {error}"))?;
+    wasm_result
 }

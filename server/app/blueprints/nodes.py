@@ -6,8 +6,6 @@ import shutil
 import time
 import uuid
 
-from app.utils.api import encrypt_api_key, generate_api_key
-
 from app.extensions import redis_client
 from app.utils.task_queue import (
     TASK_LEASE_SECONDS,
@@ -19,7 +17,7 @@ from app.utils.task_queue import (
     get_node,
     get_task,
 )
-from flask import Blueprint, Response, jsonify, request, send_file
+from flask import Blueprint, Response, current_app, jsonify, request, send_file
 
 nodes_bp = Blueprint("nodes", __name__)
 
@@ -27,8 +25,6 @@ nodes_bp = Blueprint("nodes", __name__)
 STREAM_SIZE_BYTES = 300 * 1024 * 1024
 DUMMY_DATA = os.urandom(STREAM_SIZE_BYTES)
 
-
-# NODE ID SLOP
 
 def _extract_node_id() -> str:
     header_node_id = (request.headers.get("X-Node-Id") or "").strip()
@@ -42,16 +38,22 @@ def _extract_node_id() -> str:
     return ""
 
 
+def _extract_bearer_token() -> str:
+    auth_header = (request.headers.get("Authorization") or "").strip()
+    if not auth_header.startswith("Bearer "):
+        return ""
+    return auth_header.split(" ", 1)[1].strip()
+
+
 def _require_node_auth():
     node_id = _extract_node_id()
     if not node_id:
         return None, None, (jsonify({"error": "Missing node_id"}), 400)
 
-    auth_header = request.headers.get("Authorization") or ""
-    if not auth_header.startswith("Bearer "):
+    token = _extract_bearer_token()
+    if not token:
         return None, None, (jsonify({"error": "Missing bearer token"}), 401)
 
-    token = auth_header.split(" ", 1)[1].strip()
     node = get_node(node_id)
     if not node:
         return None, None, (jsonify({"error": "Unknown node_id"}), 404)
@@ -62,7 +64,38 @@ def _require_node_auth():
     return node_id, node, None
 
 
-# ROUTE SLOP
+def _require_node_registration_token():
+    expected = (current_app.config.get("NODE_REGISTRATION_TOKEN") or "").strip()
+    if not expected:
+        return None
+
+    provided = _extract_bearer_token()
+    if not provided:
+        return jsonify({"error": "Missing node registration bearer token"}), 401
+    if not compare_token(expected, provided):
+        return jsonify({"error": "Invalid node registration token"}), 403
+    return None
+
+
+def _as_capability_flag(value: object) -> str:
+    return "1" if bool(value) else "0"
+
+
+def _maybe_int(value: str | None) -> int | None:
+    if value is None or value == "":
+        return None
+
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _task_mimetype(task: dict[str, str]) -> str:
+    if (task.get("runtime") or "").strip() == "wasm":
+        return "application/wasm"
+    return "application/octet-stream"
+
 
 @nodes_bp.route("/download", methods=["GET"])
 def download():
@@ -130,17 +163,19 @@ def health():
 
 @nodes_bp.route("/register", methods=["POST"])
 def register():
+    registration_error = _require_node_registration_token()
+    if registration_error is not None:
+        return registration_error
+
     data = request.get_json(silent=True) or {}
     node_id = f"node_{uuid.uuid4().hex[:12]}"
     node_token = secrets.token_urlsafe(32)
     timestamp = str(time.time())
 
-    raw_api_key: str = generate_api_key()
-    api_key: str = encrypt_api_key(raw_api_key)
-
     metrics = {
         "node_token": node_token,
-        "last_seen": timestamp
+        "last_seen": timestamp,
+        "supports_wasm": _as_capability_flag(data.get("supports_wasm")),
     }
 
     for field in ("latency", "download", "upload"):
@@ -148,6 +183,7 @@ def register():
         if value is not None:
             metrics[field] = str(value)
 
+    # zatar sat on my wrist while I wrote this 
     redis_client.hset(f"node:{node_id}", mapping=metrics)
     redis_client.sadd("nodes", node_id)
 
@@ -178,15 +214,26 @@ def claim_task():
     download_token = task.get("download_token") or ""
     base_url = request.host_url.rstrip("/")
 
-    return jsonify(
-        {
-            "tid": tid,
-            "job_id": task.get("job_id") or "",
-            "filename": task.get("filename") or "",
-            "claim_token": task.get("claim_token") or "",
-            "download_url": f"{base_url}/nodes/tasks/{tid}/download/{download_token}",
-        }
-    )
+    response: dict[str, object] = {
+        "tid": tid,
+        "job_id": task.get("job_id") or "",
+        "task_name": task.get("task_name") or "",
+        "filename": task.get("filename") or "",
+        "runtime": task.get("runtime") or "cloudpickle",
+        "claim_token": task.get("claim_token") or "",
+        "download_url": f"{base_url}/nodes/tasks/{tid}/download/{download_token}",
+    }
+
+    timeout_ms = _maybe_int(task.get("timeout_ms"))
+    shard_index = _maybe_int(task.get("shard_index"))
+    shard_total = _maybe_int(task.get("shard_total"))
+    if timeout_ms is not None:
+        response["timeout_ms"] = timeout_ms
+    if shard_index is not None and shard_total is not None:
+        response["shard_index"] = shard_index
+        response["shard_total"] = shard_total
+
+    return jsonify(response)
 
 
 @nodes_bp.route("/tasks/<tid>/download/<download_token>", methods=["GET"])
@@ -221,9 +268,9 @@ def download_task_blob(tid: str, download_token: str):
 
     return send_file(
         blob_path,
-        mimetype="application/octet-stream",
+        mimetype=_task_mimetype(task),
         as_attachment=True,
-        download_name=task.get("filename") or f"{tid}.pkl",
+        download_name=task.get("filename") or f"{tid}.bin",
     )
 
 
@@ -270,7 +317,3 @@ def submit_task_result(tid: str):
             "counts": summary["counts"],
         }
     ), 200
-
-if __name__ == '__main__':
-    api_key = generate_api_key()
-    print(api_key)

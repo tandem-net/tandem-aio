@@ -1,40 +1,22 @@
 """
-tandem.immutable
+tandem.Immutable
 
-Designates a module-level variable as a compile-time constant that is
-safe to read from inside a tandemed (@tandem.compute / tandem.split)
-function. Tandemed functions may ONLY read global state that has been
-registered as immutable this way — everything else must come in through
-function parameters.
+A read-only wrapper for module-level constants. All Tandem computed
+tasks must only read globals that are wrapped in tandem.Immutable,
+or else the independence validator will raise an error.
 
-Usage
------
-    NUM = tandem.immutable(67)
+Usage forms:
+---------------
+    NUM = Immutable(15)
+    NUM = Immutable[int](15)
+    NUM = Immutable.of(existing)
+    NUM = Immutable[int].of(existing)
+    NUM = Immutable.of_type(int, existing)
 
-    @tandem.compute()
-    def foo(x):
-        return NUM + x
+Every form stores the value inside the wrapper. Access the inner value
+via .value, or access its attributes directly (proxied via __getattr__).
 
-NOTE ON SYNTAX: the design doc shows the form
-
-    @tandem.immutable
-    NUM = 67
-
-This reads naturally but is NOT valid Python — `@decorator` can only
-precede a `def`/`class` statement, not a bare assignment, since there is
-no assignment object for the decorator to wrap. The real Tandem CLI will
-likely support this via a source-level preprocessor / AST rewrite pass
-(detecting the `@tandem.immutable` marker followed by an assignment, and
-rewriting it before compilation). The SDK, having no compiler yet,
-implements the equivalent semantics with the valid form
-`NAME = tandem.immutable(value)`, which:
-
-  1. registers NAME as immutable in the defining module
-  2. freezes the value as a compile-time constant for that name
-  3. returns the value unchanged, so the assignment still works normally
-
-Both spellings should produce the same registry entry once a
-preprocessor exists; until then, use the function-call form below.
+Any attempt to modify the wrapper raises AttributeError.
 """
 
 from __future__ import annotations
@@ -44,83 +26,196 @@ from typing import Any, TypeVar
 
 T = TypeVar("T")
 
-# module __name__ -> set of variable names declared immutable in that module.
-# This is what the static validator (validator.py) checks against when it
-# sees a global Name being read inside a tandemed function.
+# ---------------------------------------------------------------------------
+# Registry
+# ---------------------------------------------------------------------------
+
 _IMMUTABLE_REGISTRY: dict[str, set[str]] = {}
 
-# (module_name, var_name) -> frozen value, captured at the moment
-# `immutable()` was called. Used by LocalExecutor to resolve immutable
-# globals deterministically without re-reading mutable module state.
-_IMMUTABLE_VALUES: dict[tuple[str, str], Any] = {}
 
-
-def immutable(value: T, *, name: str | None = None) -> T:
-    """
-    Mark a value as immutable and register it against the variable name
-    it is being assigned to in the caller's module.
-
-        NUM = tandem.immutable(67)
-
-    The binding name is recovered by inspecting the caller's source line
-    (best-effort, via `inspect`). If source inspection fails (e.g. in a
-    REPL, or if the call isn't a simple `NAME = tandem.immutable(...)`
-    statement), pass the name explicitly:
-
-        NUM = tandem.immutable(67, name="NUM")
-    """
-    frame = inspect.currentframe()
-    try:
-        caller = frame.f_back
-        if caller is None:
-            return value
-        module_name = caller.f_globals.get("__name__", "<unknown>")
-
-        target_name = name or _infer_assignment_target(caller)
-        if target_name:
-            _IMMUTABLE_REGISTRY.setdefault(module_name, set()).add(target_name)
-            _IMMUTABLE_VALUES[(module_name, target_name)] = value
-    finally:
-        del frame
-    return value
-
-
-def _infer_assignment_target(caller_frame) -> str | None:
-    """Best-effort: read the source line currently executing and pull
-    out the left-hand side of a simple `NAME = ...` assignment."""
-    try:
-        source_lines, _ = inspect.findsource(caller_frame)
-    except (OSError, TypeError):
-        return None
-    lineno = caller_frame.f_lineno
-    if lineno - 1 >= len(source_lines) or lineno - 1 < 0:
-        return None
-    line = source_lines[lineno - 1].strip()
-    if "=" not in line:
-        return None
-    lhs = line.split("=", 1)[0].strip()
-    return lhs if lhs.isidentifier() else None
+def _register(module_name: str, var_name: str) -> None:
+    _IMMUTABLE_REGISTRY.setdefault(module_name, set()).add(var_name)
 
 
 def is_immutable(module_name: str, var_name: str) -> bool:
-    """Check whether `var_name` in `module_name` was declared immutable."""
     return var_name in _IMMUTABLE_REGISTRY.get(module_name, set())
 
 
-def get_immutable_value(module_name: str, var_name: str) -> Any:
-    """Fetch the frozen value recorded for an immutable binding."""
-    return _IMMUTABLE_VALUES.get((module_name, var_name))
-
-
 def all_immutable_names(module_name: str) -> set[str]:
-    """Return the full set of immutable names registered for a module."""
+    """All immutable names registered for a module.
+    Called by the independence validator and the compiler scanner."""
     return set(_IMMUTABLE_REGISTRY.get(module_name, set()))
 
 
-def register_immutable_name(module_name: str, var_name: str, value: Any = None) -> None:
-    """Explicitly register a name as immutable without going through
-    `immutable()`'s source inspection. Useful for tests or programmatic
-    registration."""
-    _IMMUTABLE_REGISTRY.setdefault(module_name, set()).add(var_name)
-    if value is not None:
-        _IMMUTABLE_VALUES[(module_name, var_name)] = value
+def register_immutable_name(module_name: str, var_name: str) -> None:
+    """Explicitly register a name. For tests and programmatic tooling."""
+    _register(module_name, var_name)
+
+
+# ---------------------------------------------------------------------------
+# Name inference
+# ---------------------------------------------------------------------------
+
+def _infer_name(depth: int) -> tuple[str, str | None]:
+    """Return (module_name, var_name) from `depth` frames up."""
+    frame = inspect.currentframe()
+    try:
+        for _ in range(depth):
+            if frame is None:
+                return "<unknown>", None
+            frame = frame.f_back
+        if frame is None:
+            return "<unknown>", None
+        module = frame.f_globals.get("__name__", "<unknown>")
+        try:
+            source_lines, _ = inspect.findsource(frame)
+        except (OSError, TypeError):
+            return module, None
+        lineno = frame.f_lineno
+        if not (0 <= lineno - 1 < len(source_lines)):
+            return module, None
+        line = source_lines[lineno - 1].strip()
+        if "=" not in line:
+            return module, None
+        lhs = line.split("=", 1)[0].strip()
+        if ":" in lhs:
+            lhs = lhs.split(":", 1)[0].strip()
+        return module, (lhs if lhs.isidentifier() else None)
+    finally:
+        del frame
+
+
+# ---------------------------------------------------------------------------
+# Immutable metaclass -- enables Immutable[T] subscript
+# ---------------------------------------------------------------------------
+
+class _ImmutableMeta(type):
+
+    def __getitem__(cls, type_hint: Any) -> type:
+        """Immutable[int], Immutable[str | None], Immutable[Point], etc."""
+        hint_name = getattr(type_hint, "__name__", repr(type_hint))
+        return _ImmutableMeta(
+            f"Immutable[{hint_name}]",
+            (cls,),
+            {"_type_hint": type_hint},
+        )
+
+
+# ---------------------------------------------------------------------------
+# Immutable wrapper
+# ---------------------------------------------------------------------------
+
+class Immutable(metaclass=_ImmutableMeta):
+    """
+    Read-only wrapper for a module-level constant.
+
+    Forms:
+        Immutable(value)
+        Immutable[T](value)
+        Immutable.of(value)
+        Immutable[T].of(value)
+        Immutable.of_type(T, value)
+    """
+
+    __slots__ = ("_value",)
+    _type_hint: Any = None  # set on typed subclasses by __class_getitem__
+
+    def __init__(self, value: Any) -> None:
+        object.__setattr__(self, "_value", value)
+        module, name = _infer_name(depth=2)
+        if name:
+            _register(module, name)
+
+    # -- read-only enforcement -------------------------------------------
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        raise AttributeError("Immutable is read-only")
+
+    def __delattr__(self, name: str) -> None:
+        raise AttributeError("Immutable is read-only")
+
+    # -- inner value access ----------------------------------------------
+
+    @property
+    def value(self) -> Any:
+        """Unwrap the inner value explicitly."""
+        return object.__getattribute__(self, "_value")
+
+    def __getattr__(self, name: str) -> Any:
+        """Proxy attribute access to the inner value."""
+        return getattr(object.__getattribute__(self, "_value"), name)
+
+    # -- standard dunder proxies -----------------------------------------
+
+    def __repr__(self) -> str:
+        v = object.__getattribute__(self, "_value")
+        t = type(self)._type_hint
+        if t is not None:
+            tname = getattr(t, "__name__", repr(t))
+            return f"Immutable[{tname}]({v!r})"
+        return f"Immutable({v!r})"
+
+    def __eq__(self, other: Any) -> bool:
+        v = object.__getattribute__(self, "_value")
+        if isinstance(other, Immutable):
+            return v == object.__getattribute__(other, "_value")
+        return v == other
+
+    def __hash__(self) -> int:
+        v = object.__getattribute__(self, "_value")
+        try:
+            return hash(v)
+        except TypeError:
+            return id(v)
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        return object.__getattribute__(self, "_value")(*args, **kwargs)
+
+    def __len__(self) -> int:
+        return len(object.__getattribute__(self, "_value"))
+
+    def __iter__(self):
+        return iter(object.__getattribute__(self, "_value"))
+
+    def __contains__(self, item: Any) -> bool:
+        return item in object.__getattribute__(self, "_value")
+
+    def __getitem__(self, key: Any) -> Any:
+        return object.__getattribute__(self, "_value")[key]
+
+    # -- alternative constructors ----------------------------------------
+
+    @classmethod
+    def of(cls, value: Any) -> "Immutable":
+        """
+        Wrap an existing value.
+
+            ORIGIN = Immutable.of(raw_point)
+            ORIGIN = Immutable[Point].of(raw_point)
+        """
+        inst = object.__new__(cls)
+        object.__setattr__(inst, "_value", value)
+        module, name = _infer_name(depth=2)
+        if name:
+            _register(module, name)
+        return inst
+
+    @classmethod
+    def of_type(cls, type_hint: Any, value: Any) -> "Immutable":
+        """
+        Inline type declaration without subscript syntax.
+
+            CONFIG = Immutable.of_type(Config, raw_config)
+        """
+        hint_name = getattr(type_hint, "__name__", repr(type_hint))
+        typed_cls = _ImmutableMeta(
+            f"Immutable[{hint_name}]",
+            (cls,),
+            {"_type_hint": type_hint},
+        )
+        inst = object.__new__(typed_cls)
+        object.__setattr__(inst, "_value", value)
+        module, name = _infer_name(depth=2)
+        if name:
+            _register(module, name)
+        return inst

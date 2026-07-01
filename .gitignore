@@ -54,6 +54,7 @@ server/runtime/
 venv/
 **/__pycache__/
 .env
+my.env
 
 # SDK generated artifacts
 sdk/app.wasm
@@ -63,3 +64,7 @@ sdk/componentize_py_async_support/
 sdk/componentize_py_runtime.pyi
 sdk/componentize_py_types.py
 sdk/poll_loop.py
+
+build/
+dist/
+*.egg-info/

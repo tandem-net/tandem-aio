@@ -1,213 +1,242 @@
 # Tandem CLI
 
-Build tool that scans a project for Tandem tasks, validates them, packages
-them into a `.tandem` artifact, and uploads that artifact to the Tandem
-server.
+This folder contains the **active Python CLI** for Tandem.
 
-## What this CLI actually does today
+The important bit is: after installing it, you run **`tandem`** directly.
+You do **not** need to run `python cli/main.py` or `python cli/cli.py` anymore.
 
-**Scan** -- walks the project for source files, and for Python files,
-detects `@tandem.compute(...)` and `name = tandem.split(fn, ...)` task
-definitions, extracting the same metadata shape the Python SDK produces
-(name, entry, language, execution class, split hints, immutable bundle
-names referenced).
+## Install the command
 
-**Validate** -- shells out to a real Python process and imports each
-task's source module. Since the SDK's `@tandem.compute` / `tandem.split`
-validate split-independence *eagerly at decoration time* (see
-`sdk/python-sdk/tandem/validator.py`), simply importing the module is
-enough to trigger the real AST-based check. If a task isn't
-independent, the import raises `TandemValidationError` and the build
-fails with that exact message. **This means the CLI never re-implements
-Python semantics in TypeScript** -- there's exactly one validator, and
-it's the Python one.
+The CLI is packaged with a Python console entry point:
 
-**Compile** -- for Python, bundles the task's metadata JSON and raw
-source into a small, real, structurally-valid WASM module (verified via
-`WebAssembly.validate()` in the test suite). See "On WASM compilation"
-below for why this is metadata-bundling rather than logic compilation.
+- Linux/macOS: installs a `tandem` shell command
+- Windows: installs a `tandem.exe` launcher
 
-**Package** -- zips everything into a `.tandem` artifact matching the
-protocol doc's layout: `manifest.json`, `tasks/*.wasm`, `graph.json`,
-`hashes.json`.
-
-**Upload** -- POSTs the artifact to the server as `multipart/form-data`.
-See "Transfer mechanism" below.
-
----
-
-## On WASM compilation (read this before assuming more than is built)
-
-There is no general AOT Python-to-native-WASM compiler integrated here,
-and there isn't a mature open-source one to integrate. What exists for
-running real Python inside WASM is Pyodide -- a full CPython build
-targeting WASM -- not a translator from arbitrary Python source into
-WASM instructions.
-
-So "compiling to WASM" for Python tasks, today, means: **package the
-metadata + source as data inside a real `.wasm` module**, using a
-minimal hand-written WASM binary (one memory, one data segment, four
-exported i32 globals giving byte offsets/lengths for the metadata and
-source blobs). A node loading this module is expected to read the
-globals, slice the bytes out of memory, and hand the source string off
-to an embedded Pyodide interpreter to actually execute it. That
-interpreter integration is **node-side**, out of scope for this CLI.
-
-This keeps the artifact format honest -- every task really does ship a
-valid `.wasm` file, satisfying the "WASM artifact" contract from the
-protocol doc -- without overclaiming that Python got compiled to native
-WASM bytecode.
-
-Other languages (Rust, Go, C++, Java, TypeScript) are registered as
-**stub backends** (`src/backends/stubs.ts`) -- detected by the scanner,
-reported in build output, but compilation throws a clear "not
-implemented yet" error naming the planned toolchain (e.g. `rustc
---target wasm32-unknown-unknown` for Rust, which -- unlike Python --
-really would produce native WASM instructions, since Rust has a mature
-wasm32 backend).
-
-Adding a language: implement `CompilerBackend` (see
-`src/backends/types.ts`), register it in `src/backends/registry.ts`. No
-other CLI code needs to change.
-
----
-
-## Transfer mechanism: multipart/form-data POST
-
-The CLI uploads via a single `multipart/form-data` POST containing the
-artifact as a binary file part, plus project name/version/hash as
-companion text fields.
-
-Why this over the alternatives (also documented inline in
-`src/core/upload.ts`):
-
-- **vs. base64-in-JSON**: avoids ~33% size inflation and full-string
-  buffering of binary data on both ends. Matters once artifacts carry
-  bundled immutable data (model weights, lookup tables) that can be MBs.
-- **vs. raw octet-stream POST**: multipart still lets you send metadata
-  (hash, version) alongside the bytes in one request without inventing
-  custom headers for everything.
-- **vs. gRPC streaming**: the eventual right answer at scale (proper
-  backpressure, bidirectional progress), but it's a bigger commitment
-  (server has to speak gRPC, schema versioning) that doesn't make sense
-  before the server's transport layer is even decided.
-- **vs. presigned-URL upload** (ask server for a short-lived S3-style
-  PUT URL, upload directly to object storage): this is the right call
-  once artifacts get large or upload volume is high, since it keeps big
-  binary transfer off the application server entirely. It's a drop-in
-  swap later -- `uploadArtifact()`'s signature doesn't need to change,
-  just what happens inside it.
-
-multipart/form-data is the right starting point: simple, supported by
-literally every HTTP framework, and a one-line internal swap away from
-presigned uploads later.
-
----
-
-## Server URL
-
-Hardcoded constant for now (`src/core/config.ts`):
-
-```ts
-export const DEFAULT_SERVER_URL = "https://api.tandem.dev";
-```
-
-Override with the `TANDEM_SERVER_URL` environment variable or the
-`--server` flag -- both already wired up, since they cost nothing now
-and are immediately useful for pointing at a local dev server.
-
-**For production**, the recommended resolution order (not yet
-implemented, see the TODO comment in `config.ts`) is the standard CLI
-pattern: `--server` flag > `TANDEM_SERVER_URL` env var > a
-`.tandemrc`/`tandem.config.json` in the project root > this constant as
-the final fallback. This wasn't built out further because there's no
-real server to route between yet -- wiring up a resolution chain with
-nothing meaningful to resolve to would be speculative.
-
----
-
-## Usage
+### Linux / macOS
 
 ```bash
-npm install
-npm run build
-
-# Scan, validate, compile, package
-node dist/index.js build \
-  --path ./my-project \
-  --out ./build.tandem \
-  --name my-project \
-  --python-sdk-path ../sdk/python-sdk
-
-# Upload a built artifact
-node dist/index.js upload ./build.tandem --name my-project
-
-# Both in one step
-node dist/index.js deploy --path ./my-project --python-sdk-path ../sdk/python-sdk
+python -m pip install -e ./cli
 ```
 
-`--python-sdk-path` is added to `PYTHONPATH` for the validation step, so
-`import tandem` resolves to the SDK in this repo without it being
-formally installed.
+### Windows (PowerShell)
 
-If `python3` isn't on `PATH`, or the `tandem` package can't be
-imported, validation is skipped with a warning rather than silently
-reporting false success.
+```powershell
+py -m pip install -e .\cli
+```
 
-## Tests
+Then verify it:
 
 ```bash
-npx vitest run
+tandem --help
 ```
 
-Covers: the WASM metadata-carrier builder (structural validity via
-`WebAssembly.validate()`, round-trip data recovery, empty-source edge
-case) and the scanner (compute/split detection, immutable bundle
-detection, non-Python language detection without crashing).
+The CLI now bundles the runtime SDKs it knows about. Today that means a Python
+project with `runtime = "python"` can be inspected and built without needing a
+separate repo-relative SDK checkout. If you need to point at a custom SDK copy,
+set `project.sdk_path` in `tandem.toml` (the legacy `project.sdk_python_path`
+key still works too).
 
----
+## Repo-local note
 
-## Server task-splitting design notes
+This repo also contains some older Node/TypeScript CLI scaffolding files in the
+same folder. The current working path for the WASM pipeline is the **Python CLI**
+under `cli/tandem_cli/`.
 
-A few things worth flagging while designing how the server splits and
-schedules work, since they fell out of building the CLI side:
+## Commands
 
-**Independence is enforced client-side, but the server should not trust
-it blindly.** The CLI's build fails if validation fails -- but a
-malicious or buggy client could skip the CLI and upload a hand-crafted
-artifact. If the server ever runs untrusted code from arbitrary
-uploaders (not just your own CLI), it needs its own sandboxing
-independent of the "independence" contract; the contract optimizes for
-*safe parallelization*, not *security isolation*. Worth deciding now
-whether nodes run in a sandboxed runtime regardless of what the
-manifest claims.
+```bash
+tandem init
+tandem init <config.toml> --name <project-name> --entry <python-entry-file>
+tandem inspect <config.toml>
+tandem manifest <config.toml>
+tandem build <config.toml>
+tandem auth register --username <username>
+tandem auth login --username <username>
+tandem deploy <config.toml>
+tandem start <config.toml>
+tandem clean <config.toml>
+```
 
-**The manifest's `split` hints are produced by a regex/heuristic
-extraction on the TypeScript side, not the SDK's runtime values.** The
-scanner reads `batch=3, timeout_ms=50` out of source text. If a project
-computes these values dynamically (e.g. `batch=config.BATCH_SIZE`),
-the scanner can't resolve them and currently falls back to defaults
-silently. The server should treat manifest split hints as *hints*, not
-guarantees, and probably wants a way for the real value to be confirmed
-at runtime (e.g. the node reports back what batch size it actually saw)
-rather than trusting the static manifest number for capacity planning.
+`tandem init`  works interactively by default: it asks a few quick questions, shows defaults, and lets you press Enter to accept them.
 
-**Chunking via `tandem.split` is synchronous and blocking from the
-caller's perspective; batching via `@tandem.compute` is async-from-the-
-caller's-thread but still blocking overall.** Neither has a "fire and
-never wait" mode yet -- that's `@tandem.async`/`@tandem.deferred` from
-the broader protocol doc, not implemented in the SDK yet. When you get
-to the server's dispatch logic, compute/split jobs are best modeled as
-synchronous RPC-style jobs (client connection stays open, server streams
-back the result), whereas async/deferred jobs need the job-queue +
-result-store model described in the protocol doc's section 9. These are
-fundamentally different server code paths, not variations of the same
-one -- worth keeping that split explicit in the server's architecture
-rather than trying to unify them early.
+Interactive defaults:
 
-**Hash-based integrity matters more once nodes can be untrusted.** The
-CLI already computes and ships a SHA-256 per task (in `manifest.json`
-and `hashes.json`) plus a whole-artifact hash on upload. The server
-should verify these on receipt and again before dispatching to a node,
-so a compromised or corrupted artifact can't silently execute different
-code than what passed validation.
+- config path: `tandem.toml`
+- project name: current directory name
+- entry file: `tasks.py`
+- version: `0.1.0`
+- output directory: `.tandem_build/<project-name>`
+
+## Full local flow
+
+This is the smallest end-to-end flow for the current repo.
+
+### 1. Start the server dependencies
+
+You need Redis running.
+
+#### Linux / macOS
+
+```bash
+redis-server
+```
+
+#### Windows
+
+Use Redis in WSL, Docker, or a local Redis install, then make sure the server can
+reach it.
+
+### 2. Start the Flask server
+
+From the repo root:
+
+#### Linux / macOS
+
+```bash
+export REDIS_URL=redis://127.0.0.1:6379/0
+export TANDEM_NODE_REGISTRATION_TOKEN=meow-secret
+python server/run.py
+```
+
+#### Windows (PowerShell)
+
+```powershell
+$env:REDIS_URL = "redis://127.0.0.1:6379/0"
+$env:TANDEM_NODE_REGISTRATION_TOKEN = "meow-secret"
+py server/run.py
+```
+
+The server listens on `http://127.0.0.1:6767` by default.
+
+### 3. Start a node
+
+From the repo root, in another terminal:
+
+#### Linux / macOS
+
+```bash
+export TANDEM_SERVER_URL=http://127.0.0.1:6767
+export TANDEM_NODE_REGISTRATION_TOKEN=meow-secret
+cargo run --manifest-path node/Cargo.toml
+```
+
+#### Windows (PowerShell)
+
+```powershell
+$env:TANDEM_SERVER_URL = "http://127.0.0.1:6767"
+$env:TANDEM_NODE_REGISTRATION_TOKEN = "meow-secret"
+cargo run --manifest-path node/Cargo.toml
+```
+
+If you actually want the big startup bandwidth benchmark, opt into it:
+
+#### Linux / macOS
+
+```bash
+export TANDEM_NODE_BENCHMARK_STARTUP=1
+```
+
+#### Windows (PowerShell)
+
+```powershell
+$env:TANDEM_NODE_BENCHMARK_STARTUP = "1"
+```
+
+Otherwise the node starts leaner and just registers itself as WASM-capable.
+
+### 4. Install the CLI command
+
+From the repo root:
+
+#### Linux / macOS
+
+```bash
+python -m pip install -e ./cli
+```
+
+#### Windows (PowerShell)
+
+```powershell
+py -m pip install -e .\cli
+```
+
+### 5. Create a user and store credentials locally
+
+From the directory where you want Tandem to create or update `.env`:
+
+#### Linux / macOS
+
+```bash
+tandem auth register --username demo --server-url http://127.0.0.1:6767
+```
+
+#### Windows (PowerShell)
+
+```powershell
+tandem auth register --username demo --server-url http://127.0.0.1:6767
+```
+
+The CLI prompts for your password securely, registers the user, authenticates, and stores `TANDEM_SERVER_URL` plus `TANDEM_API_KEY` in `.env`.
+
+To authenticate an existing user instead:
+
+```bash
+tandem auth login --username demo --server-url http://127.0.0.1:6767
+```
+
+If you need a fresh API key, rotate it explicitly:
+
+```bash
+tandem auth login --username demo --rotate-api-key
+```
+
+Security notes:
+
+- prefer the interactive password prompt over `--password`
+- the CLI never stores your password in `.env`
+- on POSIX systems it tightens `.env` permissions to owner read/write only
+- use `--no-store` if you do not want the API key written to disk
+
+### 6. Build and run the sample project
+
+From the repo root:
+
+```bash
+tandem start cli/test.toml
+```
+
+That command will:
+
+1. inspect the Python entry file,
+2. build the placeholder `.wasm` artifacts,
+3. create a deployment if needed,
+4. upload the TOML + manifest + wasm files,
+5. wait for node execution,
+6. print the returned results.
+
+If you want to just create the deployment first:
+
+```bash
+tandem deploy cli/test.toml
+```
+
+If you already have a deployment pid and want to reuse it:
+
+```bash
+tandem start cli/test.toml --pid <deployment-pid>
+```
+
+If you want to queue the job without waiting:
+
+```bash
+tandem start cli/test.toml --no-wait
+```
+
+That prints the `job_token`, status URL, and results URL.
+
+## Current runtime limitation
+
+The transport pipeline is live, but the current Python build backend still emits
+**placeholder WASM**. So a successful run proves the CLI → server → node → server
+path works, but it does not yet mean arbitrary Python logic has been lowered into
+real native WASM instructions.

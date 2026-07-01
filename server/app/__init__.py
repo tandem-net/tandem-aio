@@ -3,10 +3,36 @@ import pathlib
 
 from dotenv import load_dotenv
 from flask import Flask
+from sqlalchemy import text
 
 from app.extensions import db, redis_client
 
 load_dotenv()
+
+
+def _apply_runtime_schema_migrations() -> None:
+    engine = db.engine
+    if engine.dialect.name != "postgresql":
+        return
+
+    statements = [
+        "ALTER TABLE users ALTER COLUMN username TYPE VARCHAR(64)",
+        "ALTER TABLE users ALTER COLUMN password TYPE VARCHAR(255)",
+        "ALTER TABLE user_api_rel ALTER COLUMN api_key TYPE VARCHAR(128)",
+        "ALTER TABLE deployments ALTER COLUMN api_key TYPE VARCHAR(128)",
+        "ALTER TABLE deployments ALTER COLUMN name TYPE VARCHAR(128)",
+    ]
+
+    with engine.begin() as connection:
+        for statement in statements:
+            connection.execute(text(statement))
+
+        connection.execute(
+            text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_username_unique ON users (username)"
+            )
+        )
+
 
 def create_app():
     app = Flask(__name__)
@@ -39,6 +65,10 @@ def create_app():
     if task_storage_root:
         app.config["TASK_STORAGE_ROOT"] = task_storage_root
 
+    node_registration_token = os.environ.get("TANDEM_NODE_REGISTRATION_TOKEN")
+    if node_registration_token:
+        app.config["NODE_REGISTRATION_TOKEN"] = node_registration_token
+
     redis_client.init_app(app)
 
     from app.blueprints.api import api_bp
@@ -65,6 +95,7 @@ def create_app():
         db.init_app(app)
         try:
             db.create_all()
+            _apply_runtime_schema_migrations()
         except Exception as e:
             print("Warning: could not create database tables at startup:", e)
             # continue without stopping the app; DB may be unavailable locally
