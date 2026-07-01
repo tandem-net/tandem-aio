@@ -34,8 +34,8 @@ _EXECUTION_CLASSES = {
     "compute": "compute",
     "split": "compute",
     "pipeline": "compute",
-    "serve": "live",
-    "async_task": "live",
+    "serve": "serve",
+    "async_task": "serve",
     "cron": "scheduled",
     "deferred": "scheduled",
 }
