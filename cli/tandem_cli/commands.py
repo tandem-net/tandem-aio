@@ -12,6 +12,14 @@ from dotenv import load_dotenv
 
 from .analysis import Diagnostic
 from .app_config import write_project_config
+from .auth import (
+    login_user,
+    mask_secret,
+    prompt_password,
+    prompt_username,
+    register_user,
+    store_auth_session,
+)
 from .build import AnalysisFailure, build_project, clean_project, inspect_project
 from .manifest import build_manifest
 from .remote import deploy_project, fetch_job_results, start_project
@@ -34,8 +42,49 @@ def _add_remote_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--api-key",
         default=None,
-        help="User API key. Falls back to TANDEM_API_KEY.",
+        help="User API key. Falls back to TANDEM_API_KEY loaded from the environment or a local .env file.",
     )
+
+
+def _add_auth_options(
+    parser: argparse.ArgumentParser, *, include_rotate: bool = False
+) -> None:
+    parser.add_argument(
+        "--server-url",
+        default=None,
+        help="Server base URL. Falls back to TANDEM_SERVER_URL or http://127.0.0.1:6767.",
+    )
+    parser.add_argument(
+        "--username",
+        default=None,
+        help="Username for the Tandem account. Prompts interactively when omitted.",
+    )
+    parser.add_argument(
+        "--password",
+        default=None,
+        help="Password for the Tandem account. Prefer omitting this flag so the CLI can prompt securely.",
+    )
+    parser.add_argument(
+        "--env-file",
+        default=".env",
+        help="Path to the env file where TANDEM_SERVER_URL and TANDEM_API_KEY should be stored. Defaults to .env in the current directory.",
+    )
+    parser.add_argument(
+        "--no-store",
+        action="store_true",
+        help="Do not persist TANDEM_SERVER_URL or TANDEM_API_KEY to an env file.",
+    )
+    parser.add_argument(
+        "--show-api-key",
+        action="store_true",
+        help="Print the full API key to stdout. By default the CLI only shows a masked value when it also stores the key in an env file.",
+    )
+    if include_rotate:
+        parser.add_argument(
+            "--rotate-api-key",
+            action="store_true",
+            help="Rotate any existing API key for this user before saving the authenticated session.",
+        )
 
 
 def _format_counts(counts: dict[str, Any]) -> str:
@@ -277,6 +326,24 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Write artifacts even if static validation reports errors.",
     )
 
+    auth_parser = subparsers.add_parser(
+        "auth",
+        help="Register or authenticate a user and store Tandem credentials in a local env file.",
+    )
+    auth_subparsers = auth_parser.add_subparsers(dest="auth_command", required=True)
+
+    auth_register_parser = auth_subparsers.add_parser(
+        "register",
+        help="Create a Tandem user, obtain an API key, and optionally store it in a local env file.",
+    )
+    _add_auth_options(auth_register_parser)
+
+    auth_login_parser = auth_subparsers.add_parser(
+        "login",
+        help="Authenticate an existing Tandem user, obtain an API key, and optionally store it in a local env file.",
+    )
+    _add_auth_options(auth_login_parser, include_rotate=True)
+
     deploy_parser = subparsers.add_parser(
         "deploy",
         help="Create a deployment on the server and print its pid.",
@@ -397,6 +464,88 @@ def _cmd_build(args: argparse.Namespace) -> int:
     return 0
 
 
+def _warn_on_password_flag(args: argparse.Namespace) -> None:
+    if getattr(args, "password", None) is not None:
+        print(
+            "warning: passing passwords via --password can leak them into shell history and process lists; prefer the secure interactive prompt when possible.",
+            file=sys.stderr,
+        )
+
+
+def _print_auth_result(
+    *,
+    action: str,
+    username: str,
+    api_key: str,
+    env_path: Path | None,
+    show_api_key: bool,
+) -> None:
+    print(f"{action} user: {username}")
+    if env_path is not None:
+        print(f"Stored TANDEM_SERVER_URL and TANDEM_API_KEY in {env_path}")
+        print(f"API key: {api_key if show_api_key else mask_secret(api_key)}")
+        return
+
+    print("Credentials were not written to disk.")
+    print(f"API key: {api_key}")
+
+
+def _cmd_auth_register(args: argparse.Namespace) -> int:
+    _warn_on_password_flag(args)
+    username = prompt_username(args.username)
+    password = prompt_password(args.password, confirm=args.password is None)
+
+    register_user(
+        username=username,
+        password=password,
+        server_url=args.server_url,
+    )
+    session = login_user(
+        username=username,
+        password=password,
+        server_url=args.server_url,
+    )
+
+    env_path = None
+    if not args.no_store:
+        env_path = store_auth_session(session, env_file=args.env_file)
+
+    _print_auth_result(
+        action="Registered",
+        username=session.username,
+        api_key=session.api_key,
+        env_path=env_path,
+        show_api_key=args.show_api_key,
+    )
+    return 0
+
+
+def _cmd_auth_login(args: argparse.Namespace) -> int:
+    _warn_on_password_flag(args)
+    username = prompt_username(args.username)
+    password = prompt_password(args.password)
+
+    session = login_user(
+        username=username,
+        password=password,
+        server_url=args.server_url,
+        rotate_api_key=args.rotate_api_key,
+    )
+
+    env_path = None
+    if not args.no_store:
+        env_path = store_auth_session(session, env_file=args.env_file)
+
+    _print_auth_result(
+        action="Authenticated",
+        username=session.username,
+        api_key=session.api_key,
+        env_path=env_path,
+        show_api_key=args.show_api_key,
+    )
+    return 0
+
+
 def _cmd_deploy(args: argparse.Namespace) -> int:
     result = deploy_project(
         args.config_path,
@@ -472,6 +621,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _cmd_manifest(args)
         if args.command == "build":
             return _cmd_build(args)
+        if args.command == "auth":
+            if args.auth_command == "register":
+                return _cmd_auth_register(args)
+            if args.auth_command == "login":
+                return _cmd_auth_login(args)
+            parser.error(f"Unknown auth command: {args.auth_command}")
         if args.command == "deploy":
             return _cmd_deploy(args)
         if args.command == "start":

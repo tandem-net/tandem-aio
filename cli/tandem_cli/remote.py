@@ -47,7 +47,7 @@ def _resolve_api_key(api_key: str | None) -> str:
     resolved = (api_key or os.environ.get("TANDEM_API_KEY") or "").strip()
     if not resolved:
         raise RuntimeError(
-            "Missing API key. Pass --api-key or set TANDEM_API_KEY in the environment."
+            "Missing API key. Pass --api-key, set TANDEM_API_KEY in the environment, or store it in a local .env file with `tandem auth login` or `tandem auth register`."
         )
     return resolved
 

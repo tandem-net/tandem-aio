@@ -44,8 +44,10 @@ tandem init <config.toml> --name <project-name> --entry <python-entry-file>
 tandem inspect <config.toml>
 tandem manifest <config.toml>
 tandem build <config.toml>
-tandem deploy <config.toml> --api-key <api-key>
-tandem start <config.toml> --api-key <api-key>
+tandem auth register --username <username>
+tandem auth login --username <username>
+tandem deploy <config.toml>
+tandem start <config.toml>
 tandem clean <config.toml>
 ```
 
@@ -136,37 +138,7 @@ $env:TANDEM_NODE_BENCHMARK_STARTUP = "1"
 
 Otherwise the node starts leaner and just registers itself as WASM-capable.
 
-### 4. Create a user and API key
-
-Use the server API once.
-
-#### Linux / macOS
-
-```bash
-curl -X POST http://127.0.0.1:6767/api/v1/register \
-  -H "Content-Type: application/json" \
-  -d '{"username":"demo","password":"demo-pass"}'
-
-curl -X POST http://127.0.0.1:6767/api/v1/generate_api \
-  -H "Content-Type: application/json" \
-  -d '{"username":"demo","password":"demo-pass"}'
-```
-
-#### Windows (PowerShell)
-
-```powershell
-Invoke-RestMethod -Method Post -Uri http://127.0.0.1:6767/api/v1/register `
-  -ContentType "application/json" `
-  -Body '{"username":"demo","password":"demo-pass"}'
-
-Invoke-RestMethod -Method Post -Uri http://127.0.0.1:6767/api/v1/generate_api `
-  -ContentType "application/json" `
-  -Body '{"username":"demo","password":"demo-pass"}'
-```
-
-Save the returned `api_key`.
-
-### 5. Install the CLI command
+### 4. Install the CLI command
 
 From the repo root:
 
@@ -174,17 +146,50 @@ From the repo root:
 
 ```bash
 python -m pip install -e ./cli
-export TANDEM_API_KEY=<your-api-key>
-export TANDEM_SERVER_URL=http://127.0.0.1:6767
 ```
 
 #### Windows (PowerShell)
 
 ```powershell
 py -m pip install -e .\cli
-$env:TANDEM_API_KEY = "<your-api-key>"
-$env:TANDEM_SERVER_URL = "http://127.0.0.1:6767"
 ```
+
+### 5. Create a user and store credentials locally
+
+From the directory where you want Tandem to create or update `.env`:
+
+#### Linux / macOS
+
+```bash
+tandem auth register --username demo --server-url http://127.0.0.1:6767
+```
+
+#### Windows (PowerShell)
+
+```powershell
+tandem auth register --username demo --server-url http://127.0.0.1:6767
+```
+
+The CLI prompts for your password securely, registers the user, authenticates, and stores `TANDEM_SERVER_URL` plus `TANDEM_API_KEY` in `.env`.
+
+To authenticate an existing user instead:
+
+```bash
+tandem auth login --username demo --server-url http://127.0.0.1:6767
+```
+
+If you need a fresh API key, rotate it explicitly:
+
+```bash
+tandem auth login --username demo --rotate-api-key
+```
+
+Security notes:
+
+- prefer the interactive password prompt over `--password`
+- the CLI never stores your password in `.env`
+- on POSIX systems it tightens `.env` permissions to owner read/write only
+- use `--no-store` if you do not want the API key written to disk
 
 ### 6. Build and run the sample project
 

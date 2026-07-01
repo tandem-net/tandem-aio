@@ -1,5 +1,3 @@
-from typing import Optional
-
 from sqlalchemy import ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -10,26 +8,25 @@ class Deployment(db.Model):
     __tablename__ = "deployments"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    name: Mapped[str] = mapped_column(String, nullable=False)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
     pid: Mapped[str] = mapped_column(
         String(32), unique=True, nullable=False, index=True
     )
-    api_key: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    api_key: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
 
 
 class User(db.Model):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    username: Mapped[Optional[str]] = mapped_column(String(16))
-    password: Mapped[Optional[str]] = mapped_column(String(64))
+    username: Mapped[str] = mapped_column(
+        String(64), unique=True, nullable=False, index=True
+    )
+    password: Mapped[str] = mapped_column(String(255), nullable=False)
 
     api_keys: Mapped[list["UserAPI"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
-
-
-# another zatar comment: errrrrrdeeeeeeeeeeer
 
 
 class UserAPI(db.Model):
@@ -39,6 +36,6 @@ class UserAPI(db.Model):
     user_id: Mapped[int] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
-    api_key: Mapped[str] = mapped_column(String(32), unique=True, nullable=False)
+    api_key: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
 
     user: Mapped["User"] = relationship(back_populates="api_keys")
