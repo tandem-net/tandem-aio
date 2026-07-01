@@ -54,6 +54,7 @@ server/runtime/
 venv/
 **/__pycache__/
 .env
+my.env
 
 # SDK generated artifacts
 sdk/app.wasm
