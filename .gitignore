@@ -67,4 +67,4 @@ sdk/poll_loop.py
 
 build/
 dist/
-*.egg-info
+*.egg-info/
