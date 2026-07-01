@@ -14,6 +14,32 @@ fn server_base_url() -> String {
         .to_string()
 }
 
+fn _task_label(task: &tasks::ClaimedTask) -> String {
+    let base = if task.task_name.trim().is_empty() {
+        task.filename.clone()
+    } else {
+        task.task_name.clone()
+    };
+
+    match (task.shard_index, task.shard_total) {
+        (Some(index), Some(total)) if total > 1 => {
+            format!("{} shard {}/{}", base, index + 1, total)
+        }
+        _ => base,
+    }
+}
+
+async fn _execute_claimed_task(
+    task: &tasks::ClaimedTask,
+    payload: Vec<u8>,
+    task_timeout: Option<Duration>,
+) -> Result<Vec<u8>, tasks::DynError> {
+    match task.runtime.trim() {
+        "wasm" => tasks::execute_wasm_task(payload, task_timeout).await,
+        _ => tasks::execute_cloudpickle_task(payload, task_timeout).await,
+    }
+}
+
 #[tokio::main]
 async fn main() {
     let client = Client::new();
@@ -106,20 +132,16 @@ async fn main() {
     loop {
         match tasks::claim_task(client.clone(), claim_url.clone(), &identity).await {
             Ok(Some(task)) => {
+                let task_label = _task_label(&task);
                 println!(
-                    "Claimed task {} for job {} ({})",
-                    task.tid, task.job_id, task.filename
+                    "Claimed task {} for job {} ({}, runtime={})",
+                    task.tid, task.job_id, task_label, task.runtime
                 );
 
+                let task_timeout = tasks::resolve_task_timeout(&task, task_timeout_secs);
                 let execution_result =
                     match tasks::download_task_payload(client.clone(), &task, &identity).await {
-                        Ok(payload) => {
-                            tasks::execute_cloudpickle_task(
-                                payload,
-                                Duration::from_secs(task_timeout_secs),
-                            )
-                            .await
-                        }
+                        Ok(payload) => _execute_claimed_task(&task, payload, task_timeout).await,
                         Err(error) => Err(error),
                     };
 
@@ -136,7 +158,7 @@ async fn main() {
                         {
                             eprintln!("failed to submit result for {}: {}", task.tid, error);
                         } else {
-                            println!("Completed task {}", task.tid);
+                            println!("Completed task {} ({})", task.tid, task_label);
                         }
                     }
                     Err(error) => {
