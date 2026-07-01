@@ -7,13 +7,12 @@ class TandemError(Exception):
 
 class TandemValidationError(TandemError):
     """
-    Raised when a function fails the split-independence check.
+    Raised when a function fails the split-independence check at
+    decoration time.
 
-    This mirrors what the real Tandem CLI will raise at build/compile
-    time. In the SDK (no compiler yet), this is raised eagerly at
-    decoration time so violations are caught as early as possible.
+    The SDK validates independence eagerly (at the moment @tandem.compute
+    or tandem.split() is applied) so violations surface immediately --
+    not at compile time or first call. The compiler re-validates with
+    full symbol resolution during `tandem build`; this check catches the
+    obvious cases at development time.
     """
-
-
-class TandemRuntimeError(TandemError):
-    """Raised for errors that occur during dispatch/execution of a task."""

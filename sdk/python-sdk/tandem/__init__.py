@@ -2,39 +2,24 @@
 Tandem Python SDK
 =================
 
-Lightweight annotation layer for marking functions as distributable
-Tandem tasks. The SDK does NOT compile or execute code itself — it only:
+Marker layer for declaring Tandem tasks. The SDK:
+  - marks functions as compute or split tasks via decorators
+  - validates split-independence at decoration time
+  - attaches metadata the compiler reads during `tandem build`
 
-  - validates split-independence of decorated functions (static analysis)
-  - tracks immutable globals
-  - batches/chunks calls according to the declared protocol
-  - dispatches batched calls to a pluggable executor (a stand-in for the
-    real Tandem node-routing backend, which does not exist yet)
-
-See README.md for full documentation and examples.
+It does NOT compile, execute, batch, dispatch, or talk to any server.
 """
 
-from tandem.errors import TandemValidationError, TandemRuntimeError
-from tandem.immutable import immutable
+from tandem.errors import TandemValidationError
+from tandem.immutable import Immutable
 from tandem.compute import compute
 from tandem.split import split
-from tandem.executor import (
-    Executor,
-    LocalExecutor,
-    set_default_executor,
-    get_default_executor,
-)
 
 __all__ = [
-    "immutable",
+    "Immutable",
     "compute",
     "split",
-    "Executor",
-    "LocalExecutor",
-    "set_default_executor",
-    "get_default_executor",
     "TandemValidationError",
-    "TandemRuntimeError",
 ]
 
 __version__ = "0.1.0"
