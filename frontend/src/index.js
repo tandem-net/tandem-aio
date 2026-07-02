@@ -58,7 +58,7 @@ const SECTIONS = [
     frame: 168,
     fadeFrames: 28,
     holdFrames: 34,
-    eyebrow: '01 — Core',
+    eyebrow: '01 — The Server',
     title: 'The Coordinator',
     body: 'A lightweight coordinator keeps every node in sync — routing queries, watching health, and keeping data consistent across the network.',
   },
