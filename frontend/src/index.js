@@ -12,7 +12,7 @@ const ANIMATION_HEIGHT_VH = 1120; // total scroll length of the pinned stage
 
 const PRELOAD_AHEAD = 40;
 const PRELOAD_BEHIND = 10;
-const NAV_HEIGHT = 56;
+const NAV_HEIGHT = 80;
 
 const pad = (n) => String(n).padStart(4, '0');
 const frameUrl = (i) => `${FRAME_FOLDER}/frame_${pad(i)}${FRAME_EXT}`;
@@ -48,7 +48,7 @@ const theme = {
 // Adjust `frame` once you can see the real render — these approximate the
 // three scrollbar-position screenshots (~30% / 55% / 78% through 560 frames).
 // ---------------------------------------------------------------------------
-const FADE_FRAMES = 45;
+const FADE_FRAMES = 30;
 const HOLD_FRAMES = 40;
 const HERO_FADE_END = 80; // hero is gone by this frame, well before the coordinator blurb starts fading in
 
@@ -56,33 +56,41 @@ const SECTIONS = [
   {
     key: 'coordinator',
     frame: 168,
+    fadeFrames: 28,
+    holdFrames: 34,
     eyebrow: '01 — Core',
     title: 'The Coordinator',
     body: 'A lightweight coordinator keeps every node in sync — routing queries, watching health, and keeping data consistent across the network.',
   },
   {
     key: 'cli',
-    frame: 308,
+    frame: 340,
+    fadeFrames: 40,
+    holdFrames: 44,
     eyebrow: '02 — CLI',
     title: 'One Command Away',
-    body: 'Talk to your cluster with a single command-line tool. Deploy, query, and monitor — no dashboard required.',
+    body: 'Talk to your cluster with a single command-line tool. Deploy, query, and monitor all from your terminal',
   },
   {
     key: 'nodes',
-    frame: 437,
+    frame: 500,
+    fadeFrames: 32,
+    holdFrames: 90,
     eyebrow: '03 — Network',
     title: 'Add Your Node',
-    body: 'Turn a spare machine into part of the network. Install the client, join the pool, and start sharing storage.',
+    body: 'Turn a spare machine into part of the network. Install the client, join the pool, and start sharing storage and computing power',
   },
 ];
 
-function sectionOpacity(frame, center) {
-  const dist = Math.abs(frame - center);
-  const halfHold = HOLD_FRAMES / 2;
+function sectionOpacity(frame, section) {
+  const dist = Math.abs(frame - section.frame);
+  const holdFrames = section.holdFrames ?? HOLD_FRAMES;
+  const fadeFrames = section.fadeFrames ?? FADE_FRAMES;
+  const halfHold = holdFrames / 2;
   if (dist <= halfHold) return 1;
   const fadeDist = dist - halfHold;
-  if (fadeDist >= FADE_FRAMES) return 0;
-  return 1 - fadeDist / FADE_FRAMES;
+  if (fadeDist >= fadeFrames) return 0;
+  return 1 - fadeDist / fadeFrames;
 }
 
 function heroOpacity(frame) {
@@ -96,12 +104,12 @@ function heroOpacity(frame) {
 // links whenever you have them; the empty `github: '#'` hrefs are ready to go.
 // ---------------------------------------------------------------------------
 const FOUNDERS = [
-  { name: 'Founder 01', role: 'Systems Engineering', github: '#' },
-  { name: 'Founder 02', role: 'Infrastructure', github: '#' },
-  { name: 'Founder 03', role: 'Protocol Design', github: '#' },
-  { name: 'Founder 04', role: 'Product', github: '#' },
-  { name: 'Founder 05', role: 'Distributed Systems', github: '#' },
-  { name: 'Founder 06', role: 'Design', github: '#' },
+  { name: 'Wissam Nusiar', role: 'Server', github: 'https://github.com/wnusair' },
+  { name: 'Aryan Chaudhuri', role: 'Frontend', github: 'https://github.com/SwordedCat' },
+  { name: 'Shamgar David', role: 'CLI', github: 'https://github.com/MrPlankton611' },
+  { name: 'Ethan Yao', role: 'Nodes', github: 'https://github.com/P3nguinMinecraft' },
+  { name: 'Robel Yoseph', role: 'Frontend', github: 'https://github.com/RobelMessi' },
+  { name: 'Vishal Ambatipudi', role: 'Frontend', github: 'https://github.com/Squash882' },
 ];
 
 // ---------------------------------------------------------------------------
@@ -179,21 +187,23 @@ function Navbar({ onNavigate }) {
 function Hero({ heroRef }) {
   return (
     <View style={styles.heroOverlay} nativeID="overview" ref={heroRef}>
-      <Text style={styles.heroEyebrow}>DISTRIBUTED · OPEN SOURCE</Text>
-      <Text style={styles.heroTitle}>Tandem</Text>
-      <Text style={styles.heroTagline}>
-        A database built from the computers you already have.
-      </Text>
-      <Text style={styles.heroBody}>
-        Tandem pools storage and compute across a network of everyday
-        machines — your own, or ones you trust — as a cheaper, more open
-        alternative to large-scale managed databases.
-      </Text>
-      <button className="tandem-download-btn">
-        <DownloadIcon />
-        Download Tandem
-      </button>
-      <Text style={styles.heroSubtext}>macOS · Linux · Windows</Text>
+      <View style={styles.heroContent}>
+        <Text style={styles.heroEyebrow}>DISTRIBUTED · OPEN SOURCE</Text>
+        <Text style={styles.heroTitle}>Tandem</Text>
+        <Text style={styles.heroTagline}>
+          A database built from the computers you already have.
+        </Text>
+        <Text style={styles.heroBody}>
+          Tandem pools storage and compute across a network of everyday
+          machines — your own, or ones you trust — as a cheaper, more open
+          alternative to large-scale managed databases.
+        </Text>
+        <button className="tandem-download-btn">
+          <DownloadIcon />
+          Download Tandem
+        </button>
+        <Text style={styles.heroSubtext}>macOS · Linux · Windows</Text>
+      </View>
     </View>
   );
 }
@@ -217,18 +227,23 @@ function AnimationStage({ stageRef, canvasRef, heroRef, narrativeRefs }) {
         <Hero heroRef={heroRef} />
 
         <View style={styles.narrativeLayer} pointerEvents="none">
-          {SECTIONS.map((section, i) => (
-            <div
-              key={section.key}
-              nativeID={section.key}
-              ref={(el) => (narrativeRefs.current[i] = el)}
-              className="tandem-narrative-item"
-            >
-              <span className="tandem-narrative-eyebrow">{section.eyebrow}</span>
-              <span className="tandem-narrative-title">{section.title}</span>
-              <span className="tandem-narrative-body">{section.body}</span>
-            </div>
-          ))}
+          {SECTIONS.map((section, i) => {
+            const sectionClass = `tandem-narrative-item tandem-narrative-item--${section.key}`;
+            return (
+              <div
+                key={section.key}
+                nativeID={section.key}
+                ref={(el) => (narrativeRefs.current[i] = el)}
+                className={sectionClass}
+              >
+                <div className="tandem-narrative-copy">
+                  <span className="tandem-narrative-eyebrow">{section.eyebrow}</span>
+                  <span className="tandem-narrative-title">{section.title}</span>
+                  <span className="tandem-narrative-body">{section.body}</span>
+                </div>
+              </div>
+            );
+          })}
         </View>
       </View>
     </View>
@@ -245,9 +260,9 @@ function OpenSourceSection() {
       <Text style={styles.sectionTitle}>Built in the open</Text>
       <Text style={styles.openSourceBody}>
         The coordinator, the CLI, and the node client are all open source.
-        Read the code, run your own network, or send a patch back.
+        Read the code, run your own network, complete tasks for free.
       </Text>
-      <a className="tandem-outline-btn" href="#" target="_blank" rel="noreferrer">
+      <a className="tandem-outline-btn" href="https://github.com/tandem-net/tandem-aio" target="_blank" rel="noreferrer">
         <GitHubIcon />
         View on GitHub
       </a>
@@ -429,7 +444,7 @@ function App() {
     SECTIONS.forEach((section, i) => {
       const el = narrativeRefs.current[i];
       if (!el) return;
-      const opacity = sectionOpacity(frame, section.frame);
+      const opacity = sectionOpacity(frame, section);
       el.style.opacity = String(opacity);
       el.style.transform = `translateY(${(1 - opacity) * 10}px)`;
       el.style.pointerEvents = opacity > 0.05 ? 'auto' : 'none';
@@ -529,7 +544,7 @@ function GlobalStyle() {
         border-bottom: 1px solid ${theme.color.hairline};
       }
       .tandem-navbar-inner {
-        max-width: 1100px;
+        max-width: 1600px;
         margin: 0 auto;
         height: ${NAV_HEIGHT}px;
         display: flex;
@@ -624,6 +639,7 @@ function GlobalStyle() {
         background: ${theme.color.glass};
       }
 
+      /* Base layout for every mapped section block */
       .tandem-narrative-item {
         position: absolute;
         top: 50%;
@@ -638,6 +654,65 @@ function GlobalStyle() {
         opacity: 0;
         transition: transform 0.1s linear;
       }
+      /* Controls the text wrapper alignment for the mapped section copy */
+      .tandem-narrative-copy {
+        display: flex;
+        flex-direction: column;
+        align-items: inherit;
+        text-align: inherit;
+        gap: 8px;
+        width: 100%;
+      }
+      /* Coordinator-specific layout and text controls */
+      .tandem-narrative-item--coordinator {
+        /* tweak this block only */
+      }
+      .tandem-narrative-item--coordinator .tandem-narrative-eyebrow {
+        font-size: 20px;
+      }
+      .tandem-narrative-item--coordinator .tandem-narrative-title {
+        font-size: 45px;
+      }
+      .tandem-narrative-item--coordinator .tandem-narrative-body {
+        font-size: 16px;
+        line-height: 1.5;
+      }
+      /* CLI-specific layout and text controls */
+      .tandem-narrative-item--cli {
+        width: min(630px, 78vw);
+        left: calc(50% - 120px);
+        transform: translate(0, -50%);
+        align-items: flex-start;
+        text-align: left;
+      }
+      .tandem-narrative-item--cli .tandem-narrative-copy {
+        max-width: 620px;
+      }
+      .tandem-narrative-item--cli .tandem-narrative-eyebrow {
+        font-size: 20px;
+      }
+      .tandem-narrative-item--cli .tandem-narrative-title {
+        font-size: 60px;
+      }
+      .tandem-narrative-item--cli .tandem-narrative-body {
+        font-size: 20px;
+        line-height: 1.6;
+      }
+      /* Nodes-specific layout and text controls */
+      .tandem-narrative-item--nodes {
+        /* tweak this block only */
+      }
+      .tandem-narrative-item--nodes .tandem-narrative-eyebrow {
+        font-size: 20px;
+      }
+      .tandem-narrative-item--nodes .tandem-narrative-title {
+        font-size: 50px;
+      }
+      .tandem-narrative-item--nodes .tandem-narrative-body {
+        font-size: 18px;
+        line-height: 1.5;
+      }
+      /* Shared eyebrow font styling for all mapped sections */
       .tandem-narrative-eyebrow {
         font-family: ${theme.font.text};
         font-size: 11px;
@@ -646,6 +721,7 @@ function GlobalStyle() {
         color: ${theme.color.accent};
         text-transform: uppercase;
       }
+      /* Controls the title font size for all mapped sections */
       .tandem-narrative-title {
         font-family: ${theme.font.display};
         font-size: 24px;
@@ -653,6 +729,7 @@ function GlobalStyle() {
         letter-spacing: -0.3px;
         color: ${theme.color.textPrimary};
       }
+      /* Controls the body font size for all mapped sections */
       .tandem-narrative-body {
         font-family: ${theme.font.text};
         font-size: 14.5px;
@@ -812,15 +889,21 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 0, left: 0, right: 0, bottom: 0,
     zIndex: 3,
-    paddingTop: 140,
+    paddingTop: 180,
     paddingHorizontal: 24,
     paddingBottom: 60,
     alignItems: 'center',
     justifyContent: 'flex-start',
   },
+  heroContent: {
+    width: '100%',
+    maxWidth: 660,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   heroEyebrow: {
     fontFamily: theme.font.text,
-    fontSize: 11,
+    fontSize: 11, // changes the hero eyebrow text size
     fontWeight: '600',
     letterSpacing: 1.4,
     color: theme.color.accent,
@@ -828,7 +911,7 @@ const styles = StyleSheet.create({
   },
   heroTitle: {
     fontFamily: theme.font.display,
-    fontSize: 'clamp(48px, 9vw, 92px)',
+    fontSize: 'clamp(48px, 9vw, 92px)', // changes the hero title text size
     fontWeight: '700',
     letterSpacing: -2,
     color: theme.color.textPrimary,
@@ -837,7 +920,7 @@ const styles = StyleSheet.create({
   },
   heroTagline: {
     fontFamily: theme.font.display,
-    fontSize: 'clamp(18px, 2.6vw, 26px)',
+    fontSize: 'clamp(18px, 2.6vw, 26px)', // changes the hero tagline text size
     fontWeight: '500',
     letterSpacing: -0.3,
     color: theme.color.textPrimary,
@@ -847,7 +930,7 @@ const styles = StyleSheet.create({
   },
   heroBody: {
     fontFamily: theme.font.text,
-    fontSize: 16,
+    fontSize: 16, // changes the hero body text size
     lineHeight: 26,
     fontWeight: '400',
     color: theme.color.textSecondary,
@@ -857,7 +940,7 @@ const styles = StyleSheet.create({
   },
   heroSubtext: {
     fontFamily: theme.font.text,
-    fontSize: 12,
+    fontSize: 12, // changes the hero subtext size
     fontWeight: '400',
     color: theme.color.textTertiary,
     marginTop: 14,
@@ -894,8 +977,9 @@ const styles = StyleSheet.create({
   },
   narrativeLayer: {
     position: 'absolute',
-    top: 0, left: 0, right: 0, bottom: 0,
+    top: 0, left: 0, right: 345 , bottom: 140,
     zIndex: 2,
+    backgroundColor: 'transparent',
   },
 
   // Open source
