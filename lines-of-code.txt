@@ -1,0 +1,1 @@
+git ls-files | grep -vE '\.(ts|db|whiteboard|excalidraw|wat|wasm|json|lock|pyc|png|jpg|jpeg|gif|svg|webp|ico|webm)$|node_modules/|__pycache__/' | xargs wc -l

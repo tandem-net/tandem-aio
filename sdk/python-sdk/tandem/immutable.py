@@ -26,9 +26,7 @@ from typing import Any, TypeVar
 
 T = TypeVar("T")
 
-# ---------------------------------------------------------------------------
 # Registry
-# ---------------------------------------------------------------------------
 
 _IMMUTABLE_REGISTRY: dict[str, set[str]] = {}
 
@@ -52,9 +50,7 @@ def register_immutable_name(module_name: str, var_name: str) -> None:
     _register(module_name, var_name)
 
 
-# ---------------------------------------------------------------------------
 # Name inference
-# ---------------------------------------------------------------------------
 
 def _infer_name(depth: int) -> tuple[str, str | None]:
     """Return (module_name, var_name) from `depth` frames up."""
@@ -85,9 +81,7 @@ def _infer_name(depth: int) -> tuple[str, str | None]:
         del frame
 
 
-# ---------------------------------------------------------------------------
 # Immutable metaclass -- enables Immutable[T] subscript
-# ---------------------------------------------------------------------------
 
 class _ImmutableMeta(type):
 
@@ -101,9 +95,7 @@ class _ImmutableMeta(type):
         )
 
 
-# ---------------------------------------------------------------------------
 # Immutable wrapper
-# ---------------------------------------------------------------------------
 
 class Immutable(metaclass=_ImmutableMeta):
     """

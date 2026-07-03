@@ -10,7 +10,7 @@ from .analysis import AnalysisReport, Diagnostic, analyze_tasks
 from .app_config import ProjectConfig, load_project_config
 from .discovery import DiscoveredProject, discover_project
 from .manifest import build_manifest
-from .wasm import build_placeholder_wasm
+from .wasm import build_wasm
 
 
 class AnalysisFailure(RuntimeError):
@@ -79,7 +79,7 @@ def build_project(config_path: str | Path, *, strict: bool = True) -> BuildResul
         wasm_path = config.output_dir / manifest_entry["wasm"]
         wasm_path.parent.mkdir(parents=True, exist_ok=True)
         wasm_path.write_bytes(
-            build_placeholder_wasm(
+            build_wasm(
                 task,
                 manifest_entry,
                 sdk_info=discovered.sdk_descriptor.sdk.as_dict(),

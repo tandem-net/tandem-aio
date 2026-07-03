@@ -225,3 +225,125 @@ def validate_independence(func: Callable) -> None:
             f"with `{name} = tandem.immutable(...)`. "
             f"Pass '{name}' as a parameter instead, or mark it immutable."
         )
+
+
+# ---------------------------------------------------------------------------
+# WASM-compatible type validation (runs at build time)
+# ---------------------------------------------------------------------------
+
+# Primitive types that map cleanly to the WASM Component Model.
+_WASM_SCALAR_NAMES: set[str] = {"int", "float", "bool", "str", "bytes"}
+
+# Generic container origins that are allowed when their type parameters
+# are themselves WASM-compatible.
+_WASM_CONTAINER_NAMES: set[str] = {"list", "List", "dict", "Dict", "tuple", "Tuple"}
+
+
+def _annotation_source(node: ast.expr) -> str:
+    """Recover a human-readable string from an annotation AST node."""
+    try:
+        return ast.unparse(node)
+    except Exception:
+        return "<unknown>"
+
+
+def _is_wasm_compatible_annotation(node: ast.expr) -> bool:
+    """
+    Return True when *node* represents a type annotation that the
+    Tandem builder can lower to WASM Component Model types.
+
+    Allowed forms:
+        int, float, bool, str, bytes
+        list[T], dict[K, V], tuple[T, ...]
+        None (for return-type void)
+    """
+    # ``None`` literal — used as a void return annotation.
+    if isinstance(node, ast.Constant) and node.value is None:
+        return True
+
+    # Plain name: ``int``, ``str``, etc.
+    if isinstance(node, ast.Name):
+        return node.id in _WASM_SCALAR_NAMES or node.id == "None"
+
+    # Subscript: ``list[int]``, ``dict[str, int]``, ``tuple[int, ...]``
+    if isinstance(node, ast.Subscript):
+        origin = node.value
+        if not isinstance(origin, ast.Name):
+            return False
+        if origin.id not in _WASM_CONTAINER_NAMES:
+            return False
+        # Check type parameters
+        slice_node = node.slice
+        if isinstance(slice_node, ast.Tuple):
+            return all(_is_wasm_compatible_annotation(elt) for elt in slice_node.elts)
+        return _is_wasm_compatible_annotation(slice_node)
+
+    # BinOp with ``|`` — union syntax (e.g. ``int | None``)
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
+        return (
+            _is_wasm_compatible_annotation(node.left)
+            and _is_wasm_compatible_annotation(node.right)
+        )
+
+    return False
+
+
+def validate_wasm_types(func: Callable) -> list[str]:
+    """
+    Check that *func*'s parameter and return-type annotations use only
+    types that the Tandem builder can lower to WASM Component Model
+    interface types.
+
+    Returns a list of human-readable **warning** strings for missing
+    annotations and raises ``TandemValidationError`` for annotations
+    that cannot be compiled.
+    """
+    fn_node = _parse_function_ast(func)
+    label = getattr(func, "__name__", "<function>")
+    warnings: list[str] = []
+
+    # --- check parameter annotations ---
+    all_args = [
+        *fn_node.args.posonlyargs,
+        *fn_node.args.args,
+        *fn_node.args.kwonlyargs,
+    ]
+    if fn_node.args.vararg:
+        all_args.append(fn_node.args.vararg)
+    if fn_node.args.kwarg:
+        all_args.append(fn_node.args.kwarg)
+
+    for arg_node in all_args:
+        ann = arg_node.annotation
+        if ann is None:
+            warnings.append(
+                f"In '{label}': parameter '{arg_node.arg}' has no type annotation. "
+                f"Tandem will infer types at runtime, but explicit annotations "
+                f"are recommended for WASM compilation."
+            )
+            continue
+        if not _is_wasm_compatible_annotation(ann):
+            raise TandemValidationError(
+                f"In '{label}' (line {arg_node.lineno}): parameter "
+                f"'{arg_node.arg}' has annotation '{_annotation_source(ann)}' "
+                f"which cannot be compiled to WASM. Allowed types: "
+                f"int, float, bool, str, bytes, list[T], dict[K,V], tuple[T,...]."
+            )
+
+    # --- check return annotation ---
+    ret = fn_node.returns
+    if ret is None:
+        warnings.append(
+            f"In '{label}': missing return type annotation. "
+            f"Tandem will infer the return type at runtime."
+        )
+    elif not _is_wasm_compatible_annotation(ret):
+        raise TandemValidationError(
+            f"In '{label}' (line {fn_node.lineno}): return annotation "
+            f"'{_annotation_source(ret)}' cannot be compiled to WASM. "
+            f"Allowed types: int, float, bool, str, bytes, list[T], dict[K,V], "
+            f"tuple[T,...], None."
+        )
+
+    return warnings
+

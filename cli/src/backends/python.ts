@@ -111,6 +111,20 @@ function buildMetadataCarrierWasm(payload: { metadataJson: string; sourceCode: s
   w.bytes([0x00, 0x61, 0x73, 0x6d]); // '\0asm'
   w.bytes([0x01, 0x00, 0x00, 0x00]); // version 1
 
+  // -- Type section (id 1): one type () -> () --
+  w.section(1, (s) => {
+    s.uleb(1); // 1 type
+    s.byte(0x60); // func type
+    s.uleb(0); // 0 params
+    s.uleb(0); // 0 results
+  });
+
+  // -- Function section (id 3): one function using type 0 --
+  w.section(3, (s) => {
+    s.uleb(1); // 1 function
+    s.uleb(0); // type index 0
+  });
+
   // -- Memory section (id 5): one memory, min = pagesNeeded pages --
   w.section(5, (s) => {
     s.uleb(1); // 1 memory
@@ -130,9 +144,10 @@ function buildMetadataCarrierWasm(payload: { metadataJson: string; sourceCode: s
     }
   });
 
-  // -- Export section (id 7): export memory + 4 globals by name --
+  // -- Export section (id 7): export _start, memory, + 4 globals by name --
   w.section(7, (s) => {
     const exportsList: Array<[string, number, number]> = [
+      ["_start", 0x00, 0], // kind=func, index 0
       ["memory", 0x02, 0], // kind=memory, index 0
       ["meta_offset", 0x03, 0], // kind=global
       ["meta_len", 0x03, 1],
@@ -145,6 +160,14 @@ function buildMetadataCarrierWasm(payload: { metadataJson: string; sourceCode: s
       s.byte(kind);
       s.uleb(index);
     }
+  });
+
+  // -- Code section (id 10): one function body (empty) --
+  w.section(10, (s) => {
+    s.uleb(1); // 1 body
+    s.uleb(2); // body size = 2 bytes (1 byte local count, 1 byte end)
+    s.uleb(0); // 0 local declarations
+    s.byte(0x0b); // end
   });
 
   // -- Data section (id 11): one passive-free active data segment --

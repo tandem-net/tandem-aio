@@ -78,6 +78,8 @@ def _raise_response_error(response: requests.Response) -> None:
             or payload.get("message")
             or json.dumps(payload, sort_keys=True)
         )
+        if payload.get("details"):
+            detail = f"{detail} - Details: {payload.get('details')}"
     else:
         detail = str(payload) or "request failed"
 

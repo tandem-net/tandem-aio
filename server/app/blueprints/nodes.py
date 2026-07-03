@@ -1,12 +1,19 @@
 from __future__ import annotations
 
+import base64
+import json
+import logging
 import os
 import secrets
 import shutil
 import time
 import uuid
 
-from app.extensions import redis_client
+from cryptography.hazmat.primitives import serialization
+
+from app.extensions import db, redis_client
+from app.models import Deployment, NodePublicKey, TaskEncryptionKey
+from app.utils import quota, zkp
 from app.utils.task_queue import (
     TASK_LEASE_SECONDS,
     claim_task_for_node,
@@ -16,8 +23,11 @@ from app.utils.task_queue import (
     fail_task,
     get_node,
     get_task,
+    requeue_task,
 )
-from flask import Blueprint, Response, current_app, jsonify, request, send_file
+from flask import Blueprint, Response, after_this_request, current_app, jsonify, request, send_file
+
+logger = logging.getLogger(__name__)
 
 nodes_bp = Blueprint("nodes", __name__)
 
@@ -187,6 +197,19 @@ def register():
     redis_client.hset(f"node:{node_id}", mapping=metrics)
     redis_client.sadd("nodes", node_id)
 
+    # Accept optional RSA public key for task payload encryption
+    rsa_pem = (data.get("rsa_public_key_pem") or "").strip()
+    if rsa_pem:
+        try:
+            serialization.load_pem_public_key(rsa_pem.encode("utf-8"))
+        except Exception:
+            return jsonify({"error": "Invalid RSA public key PEM"}), 400
+
+        # Upsert: delete any existing row for this node_id, then insert
+        NodePublicKey.query.filter_by(node_id=node_id).delete()
+        db.session.add(NodePublicKey(node_id=node_id, rsa_public_key_pem=rsa_pem))
+        db.session.commit()
+
     return (
         jsonify(
             {
@@ -266,12 +289,30 @@ def download_task_blob(tid: str, download_token: str):
         },
     )
 
-    return send_file(
+    # Attach encryption key headers if available
+    enc_key_row = TaskEncryptionKey.query.filter_by(tid=tid).first()
+
+    response = send_file(
         blob_path,
         mimetype=_task_mimetype(task),
         as_attachment=True,
         download_name=task.get("filename") or f"{tid}.bin",
     )
+
+    if enc_key_row is not None:
+        response.headers["X-Task-Dek-Encrypted"] = enc_key_row.encrypted_dek_b64
+        response.headers["X-Task-IV"] = enc_key_row.iv_b64
+
+        @after_this_request
+        def _cleanup_enc_key(resp):
+            try:
+                TaskEncryptionKey.query.filter_by(tid=tid).delete()
+                db.session.commit()
+            except Exception:
+                logger.warning("Failed to delete TaskEncryptionKey for %s", tid, exc_info=True)
+            return resp
+
+    return response
 
 
 @nodes_bp.route("/tasks/<tid>/result", methods=["POST"])
@@ -294,8 +335,38 @@ def submit_task_result(tid: str):
 
     if request.mimetype == "application/octet-stream":
         result_bytes = request.get_data()
-        if not result_bytes:
-            return jsonify({"error": "Missing result payload"}), 400
+        # Note: result_bytes can be b"" (empty bytes) which is valid for placeholder tasks.
+
+        # --- Execution receipt verification ---
+        receipt_header = (request.headers.get("X-Execution-Receipt") or "").strip()
+        if not receipt_header:
+            return jsonify({"error": "Missing X-Execution-Receipt header"}), 400
+
+        try:
+            receipt = json.loads(base64.b64decode(receipt_header))
+        except Exception:
+            return jsonify({"error": "Could not decode execution receipt"}), 400
+
+        verified, reason = zkp.verify_receipt(receipt, result_bytes, node_id)
+        if not verified:
+            bad_count = zkp.increment_bad_receipt_count(node_id)
+            if bad_count >= zkp.BAD_RECEIPT_THRESHOLD:
+                redis_client.srem("nodes", node_id)
+                logger.warning(
+                    "Node %s deregistered after %d bad receipts", node_id, bad_count
+                )
+            # Re-queue the task instead of completing it
+            requeue_task(tid, None)
+            return jsonify({"error": f"Receipt verification failed: {reason}"}), 403
+
+        # Record instruction usage against the API key's quota
+        instruction_count = receipt.get("instruction_count", 0)
+        task_job = task.get("job_id", "")
+        task_pid = task.get("pid", "")
+        if task_pid:
+            dep = Deployment.query.filter_by(pid=task_pid).first()
+            if dep and dep.api_key:
+                quota.record_usage(dep.api_key, instruction_count)
 
         summary = complete_task(tid, node_id, result_bytes=result_bytes)
         return jsonify(

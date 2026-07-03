@@ -2,13 +2,22 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
+import os
 import pathlib
 import secrets
 import time
 from typing import Any
 
-from app.extensions import redis_client
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+from app.extensions import db, redis_client
+from app.models import NodePublicKey, TaskEncryptionKey
 from flask import current_app
+
+logger = logging.getLogger(__name__)
 
 NODE_STALE_SECONDS = 5.0
 TASK_LEASE_SECONDS = 30.0
@@ -247,6 +256,9 @@ def create_job(
         },
     )
 
+    # TTL so job keys don't accumulate forever
+    redis_client.expire(f"job:{job_id}", 86400)
+
     return {
         "job_id": job_id,
         "job_token": job_token,
@@ -271,6 +283,57 @@ def create_task(
     timestamp = now_ts()
     blob_path = task_blob_path(job_id, tid, filename)
     write_bytes(blob_path, payload)
+
+    # --- Encrypt task payload at rest with AES-256-GCM ---
+    dek = os.urandom(32)
+    iv = os.urandom(12)
+    ciphertext = AESGCM(dek).encrypt(iv, payload, None)
+    # Overwrite plaintext on disk so it never lingers
+    write_bytes(blob_path, ciphertext)
+
+    if assigned_node:
+        node_key_row = NodePublicKey.query.filter_by(node_id=assigned_node).first()
+    else:
+        node_key_row = None
+
+    if node_key_row is not None:
+        try:
+            public_key = serialization.load_pem_public_key(
+                node_key_row.rsa_public_key_pem.encode("utf-8")
+            )
+            encrypted_dek = public_key.encrypt(
+                dek,
+                padding.OAEP(
+                    mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                    algorithm=hashes.SHA256(),
+                    label=None,
+                ),
+            )
+            enc_key_row = TaskEncryptionKey(
+                tid=tid,
+                job_id=job_id,
+                encrypted_dek_b64=base64.b64encode(encrypted_dek).decode("ascii"),
+                iv_b64=base64.b64encode(iv).decode("ascii"),
+                target_node_id=assigned_node,
+            )
+            db.session.add(enc_key_row)
+            db.session.commit()
+        except Exception:
+            logger.warning(
+                "Failed to RSA-encrypt DEK for task %s / node %s – "
+                "task will be stored encrypted but key row was not saved",
+                tid,
+                assigned_node,
+                exc_info=True,
+            )
+    else:
+        if assigned_node:
+            logger.warning(
+                "Node %s has no registered RSA public key – "
+                "task %s payload encrypted with AES but DEK is not wrapped",
+                assigned_node,
+                tid,
+            )
 
     redis_client.hset(
         f"task:{tid}",
@@ -299,6 +362,9 @@ def create_task(
             "lease_expires_at": "",
         },
     )
+
+    # TTL so task keys don't accumulate forever
+    redis_client.expire(f"task:{tid}", 86400)
 
     redis_client.rpush(f"job:{job_id}:tasks", tid)
 

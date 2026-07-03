@@ -68,7 +68,13 @@ def split(
 
     @functools.wraps(runnable)
     def g(args: Sequence[Any]) -> list[Any]:
-        return [runnable(item) for item in args]
+        import os
+        if os.environ.get("TANDEM_WORKER") == "1":
+            return [runnable(item) for item in args]
+            
+        from tandem.rpc import dispatch_task
+        task_name = f"{runnable.__module__}:{runnable.__name__}"
+        return dispatch_task(task_name, (args,), {})
 
     g.__tandem_kind__ = "split"          # type: ignore[attr-defined]
     g.__tandem_chunk__ = chunk_size      # type: ignore[attr-defined]

@@ -310,6 +310,16 @@ def start():
         return error
     assert api_client is not None
 
+    from app.utils import quota
+    under_quota, info = quota.check_quota(api_client.api_key)
+    if not under_quota:
+        return jsonify({
+            "error": "Instruction quota exceeded",
+            "used": info["used"],
+            "limit": info["limit"],
+            "remaining": info["remaining"]
+        }), 429
+
     deployment = Deployment.query.filter_by(pid=pid).first()
     if not deployment:
         return jsonify({"error": "Unknown deployment pid"}), 404

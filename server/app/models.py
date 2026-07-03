@@ -1,5 +1,6 @@
-from sqlalchemy import ForeignKey, Integer, String
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.sql import func
 
 from app.extensions import db
 
@@ -39,3 +40,28 @@ class UserAPI(db.Model):
     api_key: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
 
     user: Mapped["User"] = relationship(back_populates="api_keys")
+
+
+class NodePublicKey(db.Model):
+    __tablename__ = "node_public_keys"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    node_id: Mapped[str] = mapped_column(
+        String(64), unique=True, nullable=False, index=True
+    )
+    rsa_public_key_pem: Mapped[str] = mapped_column(Text, nullable=False)
+    registered_at = mapped_column(DateTime, nullable=False, default=func.now())
+
+
+class TaskEncryptionKey(db.Model):
+    __tablename__ = "task_encryption_keys"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tid: Mapped[str] = mapped_column(
+        String(64), unique=True, nullable=False, index=True
+    )
+    job_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    encrypted_dek_b64: Mapped[str] = mapped_column(Text, nullable=False)
+    iv_b64: Mapped[str] = mapped_column(String(64), nullable=False)
+    target_node_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at = mapped_column(DateTime, nullable=False, default=func.now())

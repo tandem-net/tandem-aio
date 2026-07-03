@@ -8,7 +8,9 @@ import time
 from pathlib import Path
 from typing import Any, Sequence
 
-from dotenv import load_dotenv
+import os
+
+from dotenv import find_dotenv, load_dotenv
 
 from .analysis import Diagnostic
 from .app_config import write_project_config
@@ -23,6 +25,17 @@ from .auth import (
 from .build import AnalysisFailure, build_project, clean_project, inspect_project
 from .manifest import build_manifest
 from .remote import deploy_project, fetch_job_results, start_project
+
+# --- ANSI Color Constants ---
+class Colors:
+    GREEN = "\033[92m"
+    YELLOW = "\033[93m"
+    BLUE = "\033[94m"
+    MAGENTA = "\033[95m"
+    CYAN = "\033[96m"
+    RED = "\033[91m"
+    RESET = "\033[0m"
+    BOLD = "\033[1m"
 
 
 def _format_diagnostic(diagnostic: Diagnostic) -> str:
@@ -307,19 +320,34 @@ def _build_parser() -> argparse.ArgumentParser:
     inspect_parser = subparsers.add_parser(
         "inspect", help="Load a project, discover tasks, and print analysis output."
     )
-    inspect_parser.add_argument("config_path", help="Path to the Tandem TOML config.")
+    inspect_parser.add_argument(
+        "config_path",
+        nargs="?",
+        default=os.environ.get("TANDEM_CONFIG_PATH", "tandem.toml"),
+        help="Path to the Tandem TOML config. Defaults to tandem.toml.",
+    )
 
     manifest_parser = subparsers.add_parser(
         "manifest",
         help="Print the generated manifest JSON to stdout without writing files.",
     )
-    manifest_parser.add_argument("config_path", help="Path to the Tandem TOML config.")
+    manifest_parser.add_argument(
+        "config_path",
+        nargs="?",
+        default=os.environ.get("TANDEM_CONFIG_PATH", "tandem.toml"),
+        help="Path to the Tandem TOML config. Defaults to tandem.toml.",
+    )
 
     build_parser = subparsers.add_parser(
         "build",
         help="Validate the project and emit `.wasm` artifacts plus `.tandem/manifest.json`.",
     )
-    build_parser.add_argument("config_path", help="Path to the Tandem TOML config.")
+    build_parser.add_argument(
+        "config_path",
+        nargs="?",
+        default=os.environ.get("TANDEM_CONFIG_PATH", "tandem.toml"),
+        help="Path to the Tandem TOML config. Defaults to tandem.toml.",
+    )
     build_parser.add_argument(
         "--allow-analysis-errors",
         action="store_true",
@@ -348,14 +376,24 @@ def _build_parser() -> argparse.ArgumentParser:
         "deploy",
         help="Create a deployment on the server and print its pid.",
     )
-    deploy_parser.add_argument("config_path", help="Path to the Tandem TOML config.")
+    deploy_parser.add_argument(
+        "config_path",
+        nargs="?",
+        default=os.environ.get("TANDEM_CONFIG_PATH", "tandem.toml"),
+        help="Path to the Tandem TOML config. Defaults to tandem.toml.",
+    )
     _add_remote_options(deploy_parser)
 
     start_parser = subparsers.add_parser(
         "start",
         help="Build the project, upload its `.wasm` artifacts, and optionally wait for results.",
     )
-    start_parser.add_argument("config_path", help="Path to the Tandem TOML config.")
+    start_parser.add_argument(
+        "config_path",
+        nargs="?",
+        default=os.environ.get("TANDEM_CONFIG_PATH", "tandem.toml"),
+        help="Path to the Tandem TOML config. Defaults to tandem.toml.",
+    )
     start_parser.add_argument(
         "--pid",
         default=None,
@@ -382,7 +420,12 @@ def _build_parser() -> argparse.ArgumentParser:
     clean_parser = subparsers.add_parser(
         "clean", help="Remove generated build artifacts."
     )
-    clean_parser.add_argument("config_path", help="Path to the Tandem TOML config.")
+    clean_parser.add_argument(
+        "config_path",
+        nargs="?",
+        default=os.environ.get("TANDEM_CONFIG_PATH", "tandem.toml"),
+        help="Path to the Tandem TOML config. Defaults to tandem.toml.",
+    )
 
     return parser
 
@@ -448,16 +491,16 @@ def _cmd_build(args: argparse.Namespace) -> int:
     except AnalysisFailure as exc:
         return _report_analysis_failure(exc)
 
-    print(f"Built {result.task_count} task(s) into {result.output_dir}")
-    print(f"Manifest:   {result.manifest_path}")
-    print(f"Analysis:   {result.analysis_path}")
-    print(f"SDK bridge: {result.sdk_bridge_path}")
-    print("WASM artifacts:")
+    print(f"{Colors.GREEN}{Colors.BOLD}Built {result.task_count} task(s) into {result.output_dir}{Colors.RESET}")
+    print(f"{Colors.CYAN}Manifest:   {result.manifest_path}{Colors.RESET}")
+    print(f"{Colors.CYAN}Analysis:   {result.analysis_path}{Colors.RESET}")
+    print(f"{Colors.CYAN}SDK bridge: {result.sdk_bridge_path}{Colors.RESET}")
+    print(f"{Colors.BOLD}WASM artifacts:{Colors.RESET}")
     for path in result.wasm_paths:
-        print(f"  - {path}")
+        print(f"  - {Colors.BLUE}{path}{Colors.RESET}")
 
     if result.diagnostics:
-        print("\nDiagnostics:")
+        print(f"\n{Colors.YELLOW}Diagnostics:{Colors.RESET}")
         for diagnostic in result.diagnostics:
             print(f"  {_format_diagnostic(diagnostic)}")
 
@@ -569,18 +612,18 @@ def _cmd_start(args: argparse.Namespace) -> int:
     except AnalysisFailure as exc:
         return _report_analysis_failure(exc)
 
-    print(f"Built artifacts into {result.output_dir}")
-    print(f"Deployment pid: {result.pid}")
-    print(f"Queued job: {result.job_id}")
-    print(f"Initial counts: {_format_counts(result.counts)}")
+    print(f"{Colors.GREEN}{Colors.BOLD}Built artifacts into {result.output_dir}{Colors.RESET}")
+    print(f"{Colors.CYAN}Deployment pid: {result.pid}{Colors.RESET}")
+    print(f"{Colors.MAGENTA}Queued job: {result.job_id}{Colors.RESET}")
+    print(f"{Colors.YELLOW}Initial counts: {_format_counts(result.counts)}{Colors.RESET}")
 
     if args.no_wait:
-        print(f"Job token:   {result.job_token}")
-        print(f"Status URL:  {result.status_url}")
-        print(f"Results URL: {result.results_url}")
+        print(f"{Colors.BLUE}Job token:   {result.job_token}{Colors.RESET}")
+        print(f"{Colors.BLUE}Status URL:  {result.status_url}{Colors.RESET}")
+        print(f"{Colors.BLUE}Results URL: {result.results_url}{Colors.RESET}")
         return 0
 
-    print("Waiting for results...")
+    print(f"\n{Colors.BOLD}Waiting for results...{Colors.RESET}")
     last_counts: dict[str, Any] | None = result.counts
     poll_interval = max(args.poll_interval, 0.1)
 
@@ -607,7 +650,7 @@ def _cmd_clean(args: argparse.Namespace) -> int:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    load_dotenv()
+    load_dotenv(find_dotenv(usecwd=True))
 
     parser = _build_parser()
     args = parser.parse_args(argv)

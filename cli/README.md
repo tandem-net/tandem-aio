@@ -44,17 +44,19 @@ under `cli/tandem_cli/`.
 
 ## Commands
 
+All commands that take a configuration path now default to checking `tandem.toml` or reading from the `TANDEM_CONFIG_PATH` environment variable if omitted. The CLI also automatically loads any `.env` file present in the current working directory, so your API keys are automatically picked up.
+
 ```bash
 tandem init
-tandem init <config.toml> --name <project-name> --entry <python-entry-file>
-tandem inspect <config.toml>
-tandem manifest <config.toml>
-tandem build <config.toml>
+tandem init [config_path] --name <project-name> --entry <python-entry-file>
+tandem inspect [config_path]
+tandem manifest [config_path]
+tandem build [config_path]
 tandem auth register --username <username>
 tandem auth login --username <username>
-tandem deploy <config.toml>
-tandem start <config.toml>
-tandem clean <config.toml>
+tandem deploy [config_path]
+tandem start [config_path]
+tandem clean [config_path]
 ```
 
 `tandem init`  works interactively by default: it asks a few quick questions, shows defaults, and lets you press Enter to accept them.

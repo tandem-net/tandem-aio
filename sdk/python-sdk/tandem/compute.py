@@ -44,7 +44,14 @@ def compute(batch: int = 1, timeout_ms: int = 50) -> Callable[[F], F]:
 
         @functools.wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
-            return func(*args, **kwargs)
+            import os
+            # If we are already running inside the worker node, execute locally
+            if os.environ.get("TANDEM_WORKER") == "1":
+                return func(*args, **kwargs)
+                
+            from tandem.rpc import dispatch_task
+            task_name = f"{func.__module__}:{func.__name__}"
+            return dispatch_task(task_name, args, kwargs)
 
         wrapper.__tandem_kind__ = "compute"       # type: ignore[attr-defined]
         wrapper.__tandem_batch__ = batch           # type: ignore[attr-defined]

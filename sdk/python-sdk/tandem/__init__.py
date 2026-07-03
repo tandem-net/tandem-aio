@@ -2,7 +2,7 @@
 Tandem Python SDK
 """
 
-from tandem.errors import TandemValidationError
+from tandem.errors import TandemBuildError, TandemValidationError
 from tandem.immutable import Immutable
 from tandem.compute import compute
 from tandem.split import split
@@ -11,6 +11,7 @@ __all__ = [
     "Immutable",
     "compute",
     "split",
+    "TandemBuildError",
     "TandemValidationError",
 ]
 
