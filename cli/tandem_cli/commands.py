@@ -13,7 +13,7 @@ import os
 from dotenv import find_dotenv, load_dotenv
 
 from .analysis import Diagnostic
-from .app_config import write_project_config
+from .app_config import load_project_config, write_project_config
 from .auth import (
     login_user,
     mask_secret,
@@ -601,6 +601,15 @@ def _cmd_deploy(args: argparse.Namespace) -> int:
 
 
 def _cmd_start(args: argparse.Namespace) -> int:
+    config = load_project_config(args.config_path)
+    if config.build_start:
+        import subprocess
+        if config.build_install:
+            print(f"{Colors.YELLOW}Running install command: {config.build_install}{Colors.RESET}")
+            subprocess.run(config.build_install, shell=True, check=True)
+        print(f"{Colors.GREEN}Running start command: {config.build_start}{Colors.RESET}")
+        return subprocess.run(config.build_start, shell=True).returncode
+
     try:
         result = start_project(
             args.config_path,

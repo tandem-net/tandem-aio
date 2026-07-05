@@ -26,6 +26,8 @@ class ProjectConfig:
     sdk_path: Path | None
     sdk_package_name: str
     sdk_import_name: str
+    build_install: str | None = None
+    build_start: str | None = None
 
     def as_dict(self) -> dict[str, str | None]:
         return {
@@ -39,6 +41,8 @@ class ProjectConfig:
             "sdk_path": str(self.sdk_path) if self.sdk_path is not None else None,
             "sdk_package_name": self.sdk_package_name,
             "sdk_import_name": self.sdk_import_name,
+            "build_install": self.build_install,
+            "build_start": self.build_start,
         }
 
 
@@ -114,6 +118,10 @@ def load_project_config(path: str | Path) -> ProjectConfig:
         project_table=project,
     )
 
+    build_section = data.get("build") or {}
+    build_install = build_section.get("install") if isinstance(build_section, dict) else None
+    build_start = build_section.get("start") if isinstance(build_section, dict) else None
+
     return ProjectConfig(
         config_path=config_path,
         project_root=project_root,
@@ -125,6 +133,8 @@ def load_project_config(path: str | Path) -> ProjectConfig:
         sdk_path=sdk_path,
         sdk_package_name=sdk_spec.package_name,
         sdk_import_name=sdk_spec.import_name,
+        build_install=build_install,
+        build_start=build_start,
     )
 
 
