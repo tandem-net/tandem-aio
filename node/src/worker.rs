@@ -270,7 +270,7 @@ async fn report_success(
 
     match resp {
         Ok(r) if r.status().is_success() => {
-            eprintln!("[worker] ✓  result submitted for task {tid}");
+            eprintln!("[worker] result submitted for task {tid}");
         }
         Ok(r) => {
             let s = r.status();
