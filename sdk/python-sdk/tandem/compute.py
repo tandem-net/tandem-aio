@@ -29,7 +29,7 @@ from tandem.validator import validate_independence
 F = TypeVar("F", bound=Callable[..., Any])
 
 
-def compute(batch: int = 1, timeout_ms: int = 50) -> Callable[[F], F]:
+def compute(batch: int = 1, timeout_ms: int = 50, **kwargs: Any) -> Callable[[F], F]:
     """
     Decorator factory. Validates that the function is split-independent,
     attaches Tandem metadata, and returns a wrapped callable.

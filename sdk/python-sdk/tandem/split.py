@@ -49,6 +49,7 @@ R = TypeVar("R")
 def split(
     runnable: Callable[[A], R],
     chunk: int = 1,
+    **kwargs: Any
 ) -> Callable[[Sequence[A]], list[R]]:
     """
     Validates that `runnable` is split-independent, attaches Tandem
