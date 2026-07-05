@@ -68,3 +68,6 @@ sdk/poll_loop.py
 build/
 dist/
 *.egg-info/
+
+#Get rid of node_key temp
+**/*.pem
