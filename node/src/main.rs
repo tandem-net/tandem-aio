@@ -9,8 +9,11 @@ use config::NodeConfig;
 
 #[tokio::main]
 async fn main() {
-    // ── 1. Load .env (ignore errors — file may not exist) ───────────────
-    let _ = dotenvy::dotenv();
+    // try loading .env from the current dir first, then fall back to the parent
+    // directory so `cargo run` works from inside node/ too
+    if dotenvy::dotenv().is_err() {
+        let _ = dotenvy::from_filename("../.env");
+    }
 
     // ── 2. Read config ──────────────────────────────────────────────────
     let mut cfg = NodeConfig::from_env();
