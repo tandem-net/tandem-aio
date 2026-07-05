@@ -590,6 +590,29 @@ def _cmd_auth_login(args: argparse.Namespace) -> int:
 
 
 def _cmd_deploy(args: argparse.Namespace) -> int:
+    config = load_project_config(args.config_path)
+    if config.build_start:
+        import shutil
+        
+        project_root = config.config_path.parent.resolve()
+        snapshot_dir = project_root / ".tandem" / "deploy"
+        
+        if snapshot_dir.exists():
+            shutil.rmtree(snapshot_dir)
+            
+        print(f"Creating local deployment snapshot in {snapshot_dir}...")
+        
+        def _ignore_patterns(path, names):
+            return {
+                ".git", ".venv", "venv", "__pycache__", "node_modules", 
+                ".tandem", ".vscode", ".zed", ".tandem_build", ".idea"
+            }.intersection(names)
+            
+        shutil.copytree(project_root, snapshot_dir, ignore=_ignore_patterns)
+        
+        print(f"{Colors.GREEN}Local deployment snapshot created successfully.{Colors.RESET}")
+        return 0
+
     result = deploy_project(
         args.config_path,
         server_url=args.server_url,
@@ -604,11 +627,26 @@ def _cmd_start(args: argparse.Namespace) -> int:
     config = load_project_config(args.config_path)
     if config.build_start:
         import subprocess
+        import os
+        
+        project_root = config.config_path.parent.resolve()
+        snapshot_dir = project_root / ".tandem" / "deploy"
+        
+        if not snapshot_dir.exists():
+            print(f"{Colors.YELLOW}No local deployment found. Creating one now...{Colors.RESET}")
+            _cmd_deploy(args)
+            if not snapshot_dir.exists():
+                print(f"{Colors.RED}Failed to create deployment snapshot.{Colors.RESET}")
+                return 1
+                
+        print(f"{Colors.CYAN}Starting from local deployment snapshot: {snapshot_dir}{Colors.RESET}")
+        
+        cwd = snapshot_dir
         if config.build_install:
             print(f"{Colors.YELLOW}Running install command: {config.build_install}{Colors.RESET}")
-            subprocess.run(config.build_install, shell=True, check=True)
+            subprocess.run(config.build_install, shell=True, check=True, cwd=cwd)
         print(f"{Colors.GREEN}Running start command: {config.build_start}{Colors.RESET}")
-        return subprocess.run(config.build_start, shell=True).returncode
+        return subprocess.run(config.build_start, shell=True, cwd=cwd).returncode
 
     try:
         result = start_project(
