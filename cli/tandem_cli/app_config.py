@@ -149,6 +149,9 @@ def write_project_config(
         f'version = "{version}"\n'
         f'entry = "{entry}"\n'
         f'output_dir = "{resolved_output_dir}"\n'
+        "\n[build]\n"
+        'install = "pip install -r requirements.txt"\n'
+        'start = "python app.py"\n'
     )
 
     config_path.write_text(content, encoding="utf-8")
