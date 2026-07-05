@@ -70,7 +70,7 @@ def split(
     @functools.wraps(runnable)
     def g(args: Sequence[Any]) -> list[Any]:
         import os
-        if os.environ.get("TANDEM_WORKER") == "1":
+        if os.environ.get("TANDEM_WORKER") == "1" or os.environ.get("TANDEM_LOCAL_MODE") == "1":
             return [runnable(item) for item in args]
             
         from tandem.rpc import dispatch_task

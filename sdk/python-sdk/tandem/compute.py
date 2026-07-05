@@ -45,8 +45,8 @@ def compute(batch: int = 1, timeout_ms: int = 50, **kwargs: Any) -> Callable[[F]
         @functools.wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
             import os
-            # If we are already running inside the worker node, execute locally
-            if os.environ.get("TANDEM_WORKER") == "1":
+            # If we are already running inside the worker node or local mode, execute locally
+            if os.environ.get("TANDEM_WORKER") == "1" or os.environ.get("TANDEM_LOCAL_MODE") == "1":
                 return func(*args, **kwargs)
                 
             from tandem.rpc import dispatch_task

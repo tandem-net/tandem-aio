@@ -604,11 +604,14 @@ def _cmd_start(args: argparse.Namespace) -> int:
     config = load_project_config(args.config_path)
     if config.build_start:
         import subprocess
+        import os
+        env = os.environ.copy()
+        env["TANDEM_LOCAL_MODE"] = "1"
         if config.build_install:
             print(f"{Colors.YELLOW}Running install command: {config.build_install}{Colors.RESET}")
-            subprocess.run(config.build_install, shell=True, check=True)
+            subprocess.run(config.build_install, shell=True, check=True, env=env)
         print(f"{Colors.GREEN}Running start command: {config.build_start}{Colors.RESET}")
-        return subprocess.run(config.build_start, shell=True).returncode
+        return subprocess.run(config.build_start, shell=True, env=env).returncode
 
     try:
         result = start_project(
