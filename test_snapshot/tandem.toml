@@ -1,7 +1,0 @@
-[project]
-name = "test_snapshot"
-entry = "app.py"
-
-[build]
-install = ""
-start = "python3 app.py"
