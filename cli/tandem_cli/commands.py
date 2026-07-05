@@ -594,8 +594,14 @@ def _cmd_deploy(args: argparse.Namespace) -> int:
     if config.build_start:
         import shutil
         
+        # Build the project first so .tandem_build is up to date and included in the snapshot
+        try:
+            build_project(args.config_path, strict=False)
+        except AnalysisFailure as exc:
+            return _report_analysis_failure(exc)
+            
         project_root = config.config_path.parent.resolve()
-        snapshot_dir = project_root / ".tandem" / "deploy"
+        snapshot_dir = project_root / ".tandem_deploy"
         
         if snapshot_dir.exists():
             shutil.rmtree(snapshot_dir)
@@ -605,7 +611,7 @@ def _cmd_deploy(args: argparse.Namespace) -> int:
         def _ignore_patterns(path, names):
             return {
                 ".git", ".venv", "venv", "__pycache__", "node_modules", 
-                ".tandem", ".vscode", ".zed", ".tandem_build", ".idea"
+                ".tandem_deploy", ".vscode", ".zed", ".idea"
             }.intersection(names)
             
         shutil.copytree(project_root, snapshot_dir, ignore=_ignore_patterns)
@@ -630,7 +636,7 @@ def _cmd_start(args: argparse.Namespace) -> int:
         import os
         
         project_root = config.config_path.parent.resolve()
-        snapshot_dir = project_root / ".tandem" / "deploy"
+        snapshot_dir = project_root / ".tandem_deploy"
         
         if not snapshot_dir.exists():
             print(f"{Colors.YELLOW}No local deployment found. Creating one now...{Colors.RESET}")
