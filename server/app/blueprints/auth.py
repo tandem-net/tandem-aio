@@ -52,23 +52,35 @@ _MAX_API_KEY_GENERATION_ATTEMPTS = 10
 # ---------------------------------------------------------------------------
 
 def _load_private_key():
-    """Load the RSA private key used to sign JWTs."""
+    """Load the RSA private key as a cryptography object for PyJWT 2.x RS256 signing."""
     key_path = Path(current_app.config.get("JWT_PRIVATE_KEY_PATH", "keys/jwt_private.pem"))
     if not key_path.is_absolute():
         key_path = Path(current_app.root_path).parent / key_path
     if not key_path.exists():
         raise RuntimeError(f"JWT private key not found at {key_path}")
-    return key_path.read_bytes()
+    pem_bytes = key_path.read_bytes()
+    return serialization.load_pem_private_key(pem_bytes, password=None)
 
 
 def _load_public_key():
-    """Load the RSA public key used to verify JWTs."""
+    """Load the RSA public key as a cryptography object for PyJWT 2.x RS256 verification."""
     key_path = Path(current_app.config.get("JWT_PUBLIC_KEY_PATH", "keys/jwt_public.pem"))
     if not key_path.is_absolute():
         key_path = Path(current_app.root_path).parent / key_path
     if not key_path.exists():
         raise RuntimeError(f"JWT public key not found at {key_path}")
-    return key_path.read_bytes()
+    pem_bytes = key_path.read_bytes()
+    return serialization.load_pem_public_key(pem_bytes)
+
+
+def _load_public_key_pem() -> str:
+    """Return the raw PEM bytes of the public key as a UTF-8 string."""
+    key_path = Path(current_app.config.get("JWT_PUBLIC_KEY_PATH", "keys/jwt_public.pem"))
+    if not key_path.is_absolute():
+        key_path = Path(current_app.root_path).parent / key_path
+    if not key_path.exists():
+        raise RuntimeError(f"JWT public key not found at {key_path}")
+    return key_path.read_text()
 
 
 # ---------------------------------------------------------------------------
@@ -370,7 +382,7 @@ def public_key():
     Allows CLI and Desktop to verify JWTs offline.
     """
     try:
-        pem = _load_public_key().decode("utf-8")
+        pem = _load_public_key_pem()
         return jsonify({"public_key_pem": pem}), 200
     except Exception as exc:
         logger.error("Could not load public key: %s", exc)

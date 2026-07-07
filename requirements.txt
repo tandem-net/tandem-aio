@@ -8,4 +8,5 @@ python-dotenv>=0.21.0
 requests>=2.0
 tomli>=2.0
 cryptography
-jwt
+PyJWT[cryptography]>=2.8.0
+redis>=4.0.0
