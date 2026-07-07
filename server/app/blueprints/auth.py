@@ -26,6 +26,7 @@ from pathlib import Path
 
 import jwt
 from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
 from flask import Blueprint, current_app, g, jsonify, request
 from sqlalchemy import select
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -51,36 +52,53 @@ _MAX_API_KEY_GENERATION_ATTEMPTS = 10
 # Key loading helpers
 # ---------------------------------------------------------------------------
 
+def _resolve_key_paths() -> tuple[Path, Path]:
+    """Resolve private and public key paths, auto-generating them if absent."""
+    priv_cfg = current_app.config.get("JWT_PRIVATE_KEY_PATH", "keys/jwt_private.pem")
+    pub_cfg  = current_app.config.get("JWT_PUBLIC_KEY_PATH",  "keys/jwt_public.pem")
+    server_root = Path(current_app.root_path).parent
+    priv_path = Path(priv_cfg) if Path(priv_cfg).is_absolute() else server_root / priv_cfg
+    pub_path  = Path(pub_cfg)  if Path(pub_cfg).is_absolute()  else server_root / pub_cfg
+
+    if not priv_path.exists() or not pub_path.exists():
+        logger.info("JWT keys not found — generating new RSA-2048 keypair at %s", priv_path.parent)
+        priv_path.parent.mkdir(parents=True, exist_ok=True)
+        private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        priv_pem = private_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.TraditionalOpenSSL,
+            encryption_algorithm=serialization.NoEncryption(),
+        )
+        pub_pem = private_key.public_key().public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo,
+        )
+        priv_path.write_bytes(priv_pem)
+        pub_path.write_bytes(pub_pem)
+        # Restrict permissions: owner read-only
+        priv_path.chmod(0o600)
+        pub_path.chmod(0o644)
+        logger.info("JWT RSA-2048 keypair generated successfully")
+
+    return priv_path, pub_path
+
+
 def _load_private_key():
-    """Load the RSA private key as a cryptography object for PyJWT 2.x RS256 signing."""
-    key_path = Path(current_app.config.get("JWT_PRIVATE_KEY_PATH", "keys/jwt_private.pem"))
-    if not key_path.is_absolute():
-        key_path = Path(current_app.root_path).parent / key_path
-    if not key_path.exists():
-        raise RuntimeError(f"JWT private key not found at {key_path}")
-    pem_bytes = key_path.read_bytes()
-    return serialization.load_pem_private_key(pem_bytes, password=None)
+    """Load (or auto-generate) the RSA private key for PyJWT 2.x RS256 signing."""
+    priv_path, _ = _resolve_key_paths()
+    return serialization.load_pem_private_key(priv_path.read_bytes(), password=None)
 
 
 def _load_public_key():
-    """Load the RSA public key as a cryptography object for PyJWT 2.x RS256 verification."""
-    key_path = Path(current_app.config.get("JWT_PUBLIC_KEY_PATH", "keys/jwt_public.pem"))
-    if not key_path.is_absolute():
-        key_path = Path(current_app.root_path).parent / key_path
-    if not key_path.exists():
-        raise RuntimeError(f"JWT public key not found at {key_path}")
-    pem_bytes = key_path.read_bytes()
-    return serialization.load_pem_public_key(pem_bytes)
+    """Load (or auto-generate) the RSA public key for PyJWT 2.x RS256 verification."""
+    _, pub_path = _resolve_key_paths()
+    return serialization.load_pem_public_key(pub_path.read_bytes())
 
 
 def _load_public_key_pem() -> str:
-    """Return the raw PEM bytes of the public key as a UTF-8 string."""
-    key_path = Path(current_app.config.get("JWT_PUBLIC_KEY_PATH", "keys/jwt_public.pem"))
-    if not key_path.is_absolute():
-        key_path = Path(current_app.root_path).parent / key_path
-    if not key_path.exists():
-        raise RuntimeError(f"JWT public key not found at {key_path}")
-    return key_path.read_text()
+    """Return the RSA public key as a PEM string (for the /public-key endpoint)."""
+    _, pub_path = _resolve_key_paths()
+    return pub_path.read_text()
 
 
 # ---------------------------------------------------------------------------
