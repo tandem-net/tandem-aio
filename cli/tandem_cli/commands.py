@@ -15,6 +15,9 @@ from dotenv import find_dotenv, load_dotenv
 from .analysis import Diagnostic
 from .app_config import load_project_config, write_project_config
 from .auth import (
+    clear_auth_session,
+    get_api_key,
+    load_auth_session,
     login_user,
     mask_secret,
     prompt_password,
@@ -356,21 +359,36 @@ def _build_parser() -> argparse.ArgumentParser:
 
     auth_parser = subparsers.add_parser(
         "auth",
-        help="Register or authenticate a user and store Tandem credentials in a local env file.",
+        help="Manage Tandem authentication (login, logout, register, status).",
     )
     auth_subparsers = auth_parser.add_subparsers(dest="auth_command", required=True)
 
     auth_register_parser = auth_subparsers.add_parser(
         "register",
-        help="Create a Tandem user, obtain an API key, and optionally store it in a local env file.",
+        help="Create a new Tandem account and store credentials securely in the OS keyring.",
     )
     _add_auth_options(auth_register_parser)
 
     auth_login_parser = auth_subparsers.add_parser(
         "login",
-        help="Authenticate an existing Tandem user, obtain an API key, and optionally store it in a local env file.",
+        help="Authenticate with Tandem and store JWT tokens securely in the OS keyring.",
     )
     _add_auth_options(auth_login_parser, include_rotate=True)
+
+    auth_logout_parser = auth_subparsers.add_parser(
+        "logout",
+        help="Revoke the current session on the server and clear all local credentials.",
+    )
+    auth_logout_parser.add_argument(
+        "--server-url",
+        default=None,
+        help="Server base URL. Falls back to stored server URL or https://tandem.wnusair.org.",
+    )
+
+    auth_subparsers.add_parser(
+        "status",
+        help="Show the currently authenticated user and session info.",
+    )
 
     deploy_parser = subparsers.add_parser(
         "deploy",
@@ -524,13 +542,8 @@ def _print_auth_result(
     show_api_key: bool,
 ) -> None:
     print(f"{action} user: {username}")
-    if env_path is not None:
-        print(f"Stored TANDEM_SERVER_URL and TANDEM_API_KEY in {env_path}")
-        print(f"API key: {api_key if show_api_key else mask_secret(api_key)}")
-        return
-
-    print("Credentials were not written to disk.")
-    print(f"API key: {api_key}")
+    print("Credentials stored securely in OS keyring.")
+    print(f"API key: {api_key if show_api_key else mask_secret(api_key)}")
 
 
 def _cmd_auth_register(args: argparse.Namespace) -> int:
@@ -549,16 +562,13 @@ def _cmd_auth_register(args: argparse.Namespace) -> int:
         server_url=args.server_url,
     )
 
-    env_path = None
-    if not args.no_store:
-        env_path = store_auth_session(session, env_file=args.env_file)
-
+    store_auth_session(session)
     _print_auth_result(
         action="Registered",
         username=session.username,
         api_key=session.api_key,
-        env_path=env_path,
-        show_api_key=args.show_api_key,
+        env_path=None,
+        show_api_key=getattr(args, 'show_api_key', False),
     )
     return 0
 
@@ -572,20 +582,35 @@ def _cmd_auth_login(args: argparse.Namespace) -> int:
         username=username,
         password=password,
         server_url=args.server_url,
-        rotate_api_key=args.rotate_api_key,
+        rotate_api_key=getattr(args, 'rotate_api_key', False),
     )
 
-    env_path = None
-    if not args.no_store:
-        env_path = store_auth_session(session, env_file=args.env_file)
-
+    store_auth_session(session)
     _print_auth_result(
         action="Authenticated",
         username=session.username,
         api_key=session.api_key,
-        env_path=env_path,
-        show_api_key=args.show_api_key,
+        env_path=None,
+        show_api_key=getattr(args, 'show_api_key', False),
     )
+    return 0
+
+
+def _cmd_auth_logout(args: argparse.Namespace) -> int:
+    server_url = getattr(args, 'server_url', None)
+    clear_auth_session(server_url=server_url)
+    print("Logged out. Session revoked on server and all local credentials cleared.")
+    return 0
+
+
+def _cmd_auth_status(_args: argparse.Namespace) -> int:
+    session = load_auth_session()
+    if session is None:
+        print("Not logged in. Run `tandem auth login` to authenticate.")
+        return 1
+    print(f"Logged in as: {session.username}")
+    print(f"Server:       {session.server_url}")
+    print(f"API key:      {mask_secret(session.api_key)}")
     return 0
 
 
@@ -722,6 +747,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 return _cmd_auth_register(args)
             if args.auth_command == "login":
                 return _cmd_auth_login(args)
+            if args.auth_command == "logout":
+                return _cmd_auth_logout(args)
+            if args.auth_command == "status":
+                return _cmd_auth_status(args)
             parser.error(f"Unknown auth command: {args.auth_command}")
         if args.command == "deploy":
             return _cmd_deploy(args)

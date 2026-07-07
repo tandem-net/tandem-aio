@@ -71,8 +71,18 @@ def create_app():
 
     redis_client.init_app(app)
 
+    # JWT key paths — can be overridden via environment variables
+    app.config["JWT_PRIVATE_KEY_PATH"] = os.environ.get(
+        "JWT_PRIVATE_KEY_PATH", "keys/jwt_private.pem"
+    )
+    app.config["JWT_PUBLIC_KEY_PATH"] = os.environ.get(
+        "JWT_PUBLIC_KEY_PATH", "keys/jwt_public.pem"
+    )
+
     from app.blueprints.api import api_bp
+    from app.blueprints.auth import auth_bp
     from app.blueprints.deploy import deploy_bp
+    from app.blueprints.desktop import desktop_bp
     from app.blueprints.index import index_bp
     from app.blueprints.new import new_bp
     from app.blueprints.nodes import nodes_bp
@@ -86,6 +96,10 @@ def create_app():
     app.register_blueprint(deploy_bp, url_prefix="/deploy")
     app.register_blueprint(nodes_bp, url_prefix="/nodes")
     app.register_blueprint(api_bp, url_prefix="/api/v1")
+    # JWT-based auth for CLI and Desktop app
+    app.register_blueprint(auth_bp, url_prefix="/api/v1/auth")
+    # Desktop/CLI-specific routes (require JWT)
+    app.register_blueprint(desktop_bp, url_prefix="/api/v1/desktop")
 
     with app.app_context():
         import importlib
