@@ -1,145 +1,179 @@
-"""
-/api blueprint — Desktop app integration routes.
+import re
 
-Provides:
-  GET /api/ping          — Health check + version for the desktop app
-  GET /api/sdks          — List / search available SDKs
-  GET /api/sdks/<name>/download — Download an SDK archive
-  GET /api/updates       — Check for a newer desktop app version
-"""
-
-import os
-from flask import Blueprint, jsonify, request, send_file, abort
+from app.extensions import db, generate_api_key
+from app.models import User, UserAPI
+from flask import Blueprint, jsonify, request
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+from werkzeug.security import check_password_hash, generate_password_hash
 
 api_bp = Blueprint("api", __name__)
 
-# ─── App version (bump this when you ship a new .deb) ────────────────────────
-APP_VERSION = os.environ.get("TANDEM_APP_VERSION", "1.0.0")
-
-# ─── SDK registry ─────────────────────────────────────────────────────────────
-_SDK_REGISTRY = [
-    {
-        "name": "tandem-python-sdk",
-        "version": "1.0.0",
-        "language": "python",
-        "description": "Official Python SDK for submitting Tandem jobs",
-        "download_url": None,
-    },
-    {
-        "name": "tandem-rust-sdk",
-        "version": "1.0.0",
-        "language": "rust",
-        "description": "Rust crate for building Tandem compute tasks",
-        "download_url": None,
-    },
-    {
-        "name": "tandem-node-sdk",
-        "version": "1.0.0",
-        "language": "javascript",
-        "description": "Node.js / TypeScript SDK for Tandem distributed jobs",
-        "download_url": None,
-    },
-    {
-        "name": "tandem-cli-sdk",
-        "version": "1.0.0",
-        "language": "python",
-        "description": "Command-line interface for managing Tandem deployments",
-        "download_url": None,
-    },
-]
-
-# ─── Routes ───────────────────────────────────────────────────────────────────
-
-@api_bp.route("/ping", methods=["GET"])
-def ping():
-    """
-    Health check for the desktop app.
-
-    Returns JSON: { status, version }
-    """
-    return jsonify({"status": "ok", "version": APP_VERSION}), 200
+_USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_.-]{3,64}$")
+_MIN_PASSWORD_LENGTH = 8
+_MAX_API_KEY_GENERATION_ATTEMPTS = 5
 
 
-@api_bp.route("/sdks", methods=["GET"])
-def list_sdks():
-    """
-    Return the SDK registry, optionally filtered by a search query.
-
-    Query params:
-      q  — optional free-text filter applied to name, language, and description
-    """
-    query = (request.args.get("q") or "").strip().lower()
-
-    if query:
-        results = [
-            sdk
-            for sdk in _SDK_REGISTRY
-            if query in sdk["name"].lower()
-            or query in (sdk.get("language") or "").lower()
-            or query in (sdk.get("description") or "").lower()
-        ]
-    else:
-        results = list(_SDK_REGISTRY)
-
-    return jsonify({"sdks": results, "total": len(results)}), 200
+def _json_data() -> dict:
+    data = request.get_json(silent=True) or {}
+    return data if isinstance(data, dict) else {}
 
 
-@api_bp.route("/sdks/<string:sdk_name>/download", methods=["GET"])
-def download_sdk(sdk_name: str):
-    """
-    Download an SDK archive.
+def _normalize_username(username: str | None) -> str:
+    return (username or "").strip()
 
-    In production, serve the real .tar.gz from object storage.
-    Currently returns 404 if no download_url is configured for the SDK.
-    """
-    if ".." in sdk_name or "/" in sdk_name or "\\" in sdk_name:
-        abort(400, description="Invalid SDK name")
 
-    sdk = next((s for s in _SDK_REGISTRY if s["name"] == sdk_name), None)
-    if sdk is None:
-        abort(404, description=f"SDK '{sdk_name}' not found")
+def _validate_registration_input(username: str, password: str) -> str | None:
+    if not username or not password:
+        return "Username and password are required"
+    if not _USERNAME_PATTERN.fullmatch(username):
+        return "Username must be 3-64 characters and contain only letters, numbers, dots, underscores, or hyphens"
+    if len(password) < _MIN_PASSWORD_LENGTH:
+        return f"Password must be at least {_MIN_PASSWORD_LENGTH} characters long"
+    return None
 
-    download_url = sdk.get("download_url")
 
-    sdk_file_path = os.environ.get(f"TANDEM_SDK_PATH_{sdk_name.upper().replace('-', '_')}")
-    if sdk_file_path and os.path.isfile(sdk_file_path):
-        return send_file(
-            sdk_file_path,
-            mimetype="application/gzip",
-            as_attachment=True,
-            download_name=f"{sdk_name}.tar.gz",
+def _verify_credentials(username: str | None, password: str | None) -> User | None:
+    normalized_username = _normalize_username(username)
+    if not normalized_username or not password:
+        return None
+
+    statement = select(User).where(User.username == normalized_username)
+    user = db.session.scalars(statement).first()
+
+    if user and user.password and check_password_hash(user.password, password):
+        return user
+
+    return None
+
+
+def _issue_api_key(user: User, *, rotate_api_key: bool) -> tuple[str, bool]:
+    existing_statement = (
+        select(UserAPI).where(UserAPI.user_id == user.id).order_by(UserAPI.id.asc())
+    )
+    existing = db.session.scalars(existing_statement).first()
+
+    if existing is not None and not rotate_api_key:
+        return existing.api_key, False
+
+    if rotate_api_key:
+        for key in db.session.scalars(existing_statement).all():
+            db.session.delete(key)
+        db.session.flush()
+
+    for _ in range(_MAX_API_KEY_GENERATION_ATTEMPTS):
+        api_key = generate_api_key()
+        already_exists = db.session.scalars(
+            select(UserAPI).where(UserAPI.api_key == api_key)
+        ).first()
+        if already_exists is not None:
+            continue
+
+        new_api_entry = UserAPI()
+        new_api_entry.user_id = user.id
+        new_api_entry.api_key = api_key
+        db.session.add(new_api_entry)
+        return api_key, True
+
+    raise RuntimeError("Could not generate a unique API key")
+
+
+def _authenticate_and_issue_api_key(*, rotate_api_key: bool):
+    data = _json_data()
+    username = _normalize_username(data.get("username"))
+    password = data.get("password") or ""
+
+    user = _verify_credentials(username, password)
+    if user is None:
+        return jsonify({"status": "failure", "message": "Incorrect credentials"}), 401
+
+    try:
+        api_key, created_api_key = _issue_api_key(user, rotate_api_key=rotate_api_key)
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return (
+            jsonify(
+                {
+                    "status": "failure",
+                    "message": "Could not issue API key, please try again",
+                }
+            ),
+            500,
+        )
+    except Exception:
+        db.session.rollback()
+        return (
+            jsonify(
+                {
+                    "status": "failure",
+                    "message": "Internal database error, please try again",
+                }
+            ),
+            500,
         )
 
-    if download_url:
-        from flask import redirect
-        return redirect(download_url, code=302)
+    return (
+        jsonify(
+            {
+                "status": "success",
+                "message": "authenticated successfully",
+                "username": user.username,
+                "api_key": api_key,
+                "created_api_key": created_api_key,
+            }
+        ),
+        200,
+    )
 
-    abort(404, description=f"SDK '{sdk_name}' archive is not yet available for download")
+
+@api_bp.route("/register", methods=["POST"])
+def register():
+    data = _json_data()
+
+    username = _normalize_username(data.get("username"))
+    password = data.get("password") or ""
+
+    validation_error = _validate_registration_input(username, password)
+    if validation_error is not None:
+        return jsonify({"error": validation_error}), 400
+
+    existing_user = db.session.scalars(
+        select(User).where(User.username == username)
+    ).first()
+    if existing_user is not None:
+        return jsonify({"error": "Username already exists"}), 409
+
+    password_hash = generate_password_hash(password, method="scrypt")
+
+    try:
+        new_user = User()
+        new_user.username = username
+        new_user.password = password_hash
+
+        db.session.add(new_user)
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({"error": "Username already exists"}), 409
+    except Exception:
+        db.session.rollback()
+        return jsonify(
+            {"error": "An unexpected error occurred, please try again."}
+        ), 500
+
+    return jsonify({"status": "success"}), 201
 
 
-@api_bp.route("/updates", methods=["GET"])
-def check_updates():
-    """
-    Check whether a newer version of the desktop app is available.
+@api_bp.route("/login", methods=["POST"])
+def login():
+    data = _json_data()
+    rotate_api_key = bool(data.get("rotate_api_key"))
+    return _authenticate_and_issue_api_key(rotate_api_key=rotate_api_key)
 
-    Query params:
-      current_version — the version string reported by the running app
 
-    Returns JSON: { latest_version, update_available, download_url, release_notes }
-    """
-    current = (request.args.get("current_version") or "0.0.0").strip()
-
-    download_url = os.environ.get("TANDEM_APP_DOWNLOAD_URL")
-    release_notes = os.environ.get("TANDEM_APP_RELEASE_NOTES", "")
-
-    update_available = current != APP_VERSION
-
-    return jsonify(
-        {
-            "current_version": current,
-            "latest_version": APP_VERSION,
-            "update_available": update_available,
-            "download_url": download_url if update_available else None,
-            "release_notes": release_notes if update_available else None,
-        }
-    ), 200
+@api_bp.route("/generate_api", methods=["POST"])
+def generate_api():
+    data = _json_data()
+    rotate_api_key = bool(data.get("rotate_api_key"))
+    return _authenticate_and_issue_api_key(rotate_api_key=rotate_api_key)
