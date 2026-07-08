@@ -872,4 +872,4 @@ def _build_manifest(
 
     manifest["tasks"] = task_entries
     return manifest
-"""
+
