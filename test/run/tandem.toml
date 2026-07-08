@@ -1,0 +1,10 @@
+[project]
+name = "run"
+runtime = "python"
+version = "0.1.0"
+entry = "test.py"
+output_dir = ".tandem_build/run"
+
+[build]
+install = "pip install -r requirements.txt"
+start = "python3 test.py"
