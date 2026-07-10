@@ -40,7 +40,7 @@ key still works too).
 
 This repo also contains some older Node/TypeScript CLI scaffolding files in the
 same folder. The current working path for the WASM pipeline is the **Python CLI**
-under `cli/tandem_cli/`.
+under `cli/`.
 
 ## Commands
 
