@@ -56,6 +56,8 @@ def load_entry_module(config: ProjectConfig) -> ModuleType:
         spec.loader.exec_module(module)
     except Exception as exc:  # pragma: no cover - depends on user module behavior.
         sys.modules.pop(module_name, None)
+        import traceback
+        traceback.print_exc()
         raise RuntimeError(
             f"Failed to import Tandem entry module {config.entry_path}"
         ) from exc
