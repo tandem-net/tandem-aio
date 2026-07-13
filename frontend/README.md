@@ -1,70 +1,108 @@
-# Getting Started with Create React App
+# Project Tandem — Marketing Site
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+A premium, Apple-grade marketing site for **Project Tandem**, a decentralized
+computing mesh. Deep-obsidian dark mode, glassmorphism node cards, neon mesh
+lines, and physics-based scroll animation.
 
-## Available Scripts
+Built with **Next.js 14 (App Router) · Tailwind CSS · Framer Motion**.
 
-In the project directory, you can run:
+---
 
-### `npm start`
+## Quick start
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+```bash
+npm install      # install dependencies
+npm run dev      # start the dev server → http://localhost:3000
+npm run build    # production build
+npm run start    # serve the production build
+```
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+> Requires Node 18.18+ (Node 20+ recommended).
 
-### `npm test`
+---
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+## Project structure
 
-### `npm run build`
+```
+app/
+  layout.jsx            Root layout — fonts, metadata, persistent Navbar/Footer
+  globals.css           Tailwind layers + bespoke utilities (glass, gradient text)
+  page.jsx              "/"      — stacks the 5 homepage sections
+  about/page.jsx        "/about" — stacks the 3 about sections
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+components/
+  layout/
+    Navbar.jsx           Fixed nav that frosts-in on scroll (+ mobile sheet)
+    Footer.jsx           Structured footer
+  ui/
+    Button.jsx           Primary (filled) + secondary (chevron) CTA buttons
+    GlassCard.jsx        The reusable frosted-glass "node" surface
+    SectionLabel.jsx     The uppercase eyebrow/kicker label
+  home/
+    Hero.jsx             ★ Section 1 — cinematic hero (gradient headline, glow)
+    CoreMetrics.jsx        Section 2 — live count-up metrics
+    ArchitectureReveal.jsx ★ Section 3 — scroll-driven "task bursts into nodes"
+    HardwareShowcase.jsx   Section 4 — device outlines grid
+    CallToAction.jsx       Section 5 — terminal command + beta signup
+  about/
+    Vision.jsx           Section 1 — asymmetric editorial opener
+    CorePillars.jsx      Section 2 — Rust/Go/Python bento grid
+    TeamGrid.jsx         ★ Section 3 — co-founder profile grid
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+hooks/
+  useCountUp.js          Scroll-triggered animated number counter
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+lib/
+  data.js                ALL site content/copy/numbers (edit here, not in JSX)
+  motion.js              Shared Framer Motion springs + variants (the "feel")
 
-### `npm run eject`
+tailwind.config.js       The design system: colors, type scale, glow shadows
+```
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+★ = the two flagship deliverables (Homepage Hero + Architecture, About Team grid).
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+---
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+## Where to customize
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+| You want to change…              | Edit…                                        |
+| -------------------------------- | -------------------------------------------- |
+| Headlines, metrics, team, copy   | `lib/data.js`                                |
+| Colors, glow, type sizes         | `tailwind.config.js`                         |
+| Animation feel (springs/timing)  | `lib/motion.js`                              |
+| Add a real founder photo         | `lib/data.js` → set `image: "/team/x.jpg"`   |
+| Glass / gradient-text recipe     | `app/globals.css`                            |
 
-## Learn More
+---
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+## Reading the code
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+Every file is heavily commented in three tiers so it doubles as a teaching
+reference:
 
-### Code Splitting
+- **State Management** — what React/Framer state exists and why.
+- **Layout / Styling Architecture** — the reasoning behind specific Tailwind
+  utility choices.
+- **Motion Layer** — the animation physics (spring stiffness/damping) and the
+  scroll-progress → visual-property mappings.
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+Start with `lib/motion.js` (the animation vocabulary), then read
+`components/home/Hero.jsx` and `components/home/ArchitectureReveal.jsx` — they
+demonstrate every pattern used elsewhere.
 
-### Analyzing the Bundle Size
+---
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+## Accessibility & performance notes
 
-### Making a Progressive Web App
+- Respects `prefers-reduced-motion` (see `globals.css`) — all motion collapses
+  for users who request reduced motion.
+- The heavy scroll choreography in `ArchitectureReveal` only runs on `md+`;
+  phones get a clean static stack of the same cards.
+- Animations use `whileInView` with `once: true`, so they play a single time and
+  never thrash on scroll-back.
+- Counters animate a Framer `motionValue` (off the React render loop) and only
+  commit a new string to state when the visible text actually changes.
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+> This is a front-end UI shell. The beta form and copy-command are wired for
+> interaction but have no backend — search for `POST to` in `CallToAction.jsx`
+> for the integration point.
