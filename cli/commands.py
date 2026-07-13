@@ -28,6 +28,13 @@ from .auth import (
 from .build import AnalysisFailure, build_project, clean_project, inspect_project
 from .manifest import build_manifest
 from .remote import deploy_project, fetch_job_results, start_project
+from .sdk_commands import (
+    download_sdk,
+    fetch_sdk_registry,
+    install_sdk,
+    resolve_sdk,
+    resolve_target_python,
+)
 
 # --- ANSI Color Constants ---
 class Colors:
@@ -390,6 +397,50 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Show the currently authenticated user and session info.",
     )
 
+    sdk_parser = subparsers.add_parser(
+        "sdk",
+        help="Browse and fetch Tandem SDKs from the server's registry. Requires `tandem auth login`.",
+    )
+    sdk_subparsers = sdk_parser.add_subparsers(dest="sdk_command", required=True)
+
+    sdk_subparsers.add_parser(
+        "list",
+        help="List SDKs (and their versions) available on the server.",
+    )
+
+    sdk_install_parser = sdk_subparsers.add_parser(
+        "install",
+        help="Pip install a Tandem SDK into the current Python environment.",
+    )
+    sdk_install_parser.add_argument(
+        "name",
+        nargs="?",
+        default=None,
+        help="SDK name from `tandem sdk list`. Auto-selects when only one SDK is available.",
+    )
+    sdk_install_parser.add_argument(
+        "--python",
+        default=None,
+        help="Python interpreter to install into. Defaults to the active virtualenv, "
+        "falling back to the first `python3`/`python` found on PATH.",
+    )
+
+    sdk_download_parser = sdk_subparsers.add_parser(
+        "download",
+        help="Copy an SDK's source into a local folder without installing it.",
+    )
+    sdk_download_parser.add_argument(
+        "name",
+        nargs="?",
+        default=None,
+        help="SDK name from `tandem sdk list`. Auto-selects when only one SDK is available.",
+    )
+    sdk_download_parser.add_argument(
+        "--output",
+        default=None,
+        help="Directory to copy the SDK source into. Defaults to ./<name>.",
+    )
+
     deploy_parser = subparsers.add_parser(
         "deploy",
         help="Create a deployment on the server and print its pid.",
@@ -614,6 +665,62 @@ def _cmd_auth_status(_args: argparse.Namespace) -> int:
     return 0
 
 
+def _format_sdk_versions(sdk: dict[str, Any]) -> str:
+    versions = [v for v in (sdk.get("versions") or []) if isinstance(v, dict)]
+    if versions:
+        return ", ".join(v.get("version", "?") for v in versions)
+    if sdk.get("version"):
+        return str(sdk["version"])
+    return "(no versions listed)"
+
+
+def _cmd_sdk_list(_args: argparse.Namespace) -> int:
+    session, sdks = fetch_sdk_registry()
+    print(f"Tandem SDKs on {session.server_url} (logged in as {session.username}):\n")
+
+    if not sdks:
+        print("No SDKs are registered on the server yet.")
+        return 0
+
+    for sdk in sdks:
+        print(f"{sdk.get('name')}  ({sdk.get('language') or 'unknown language'})")
+        if sdk.get("description"):
+            print(f"  {sdk['description']}")
+        print(f"  Versions: {_format_sdk_versions(sdk)}\n")
+
+    print("Run `tandem sdk install` to install one.")
+    return 0
+
+
+def _cmd_sdk_install(args: argparse.Namespace) -> int:
+    resolved = resolve_sdk(args.name)
+    if resolved.warning:
+        print(f"{Colors.YELLOW}warning: {resolved.warning}{Colors.RESET}", file=sys.stderr)
+
+    python_bin = resolve_target_python(args.python)
+    print(f"Installing into: {python_bin}")
+
+    version = install_sdk(resolved, target_python=python_bin)
+    print(f"{Colors.GREEN}{Colors.BOLD}Installed {resolved.name} {version}.{Colors.RESET}")
+    print('Try: python -c "import tandem; print(tandem.__version__)"')
+    return 0
+
+
+def _cmd_sdk_download(args: argparse.Namespace) -> int:
+    resolved = resolve_sdk(args.name)
+    if resolved.warning:
+        print(f"{Colors.YELLOW}warning: {resolved.warning}{Colors.RESET}", file=sys.stderr)
+
+    output_dir = (
+        Path(args.output).expanduser().resolve() if args.output else Path.cwd() / resolved.name
+    )
+    destination = download_sdk(resolved, output_dir)
+
+    print(f"{Colors.GREEN}Downloaded {resolved.name} {resolved.version} into {destination}{Colors.RESET}")
+    print(f"To install it yourself later: pip install {destination}")
+    return 0
+
+
 def _cmd_deploy(args: argparse.Namespace) -> int:
     config = load_project_config(args.config_path)
     if config.build_start:
@@ -752,6 +859,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             if args.auth_command == "status":
                 return _cmd_auth_status(args)
             parser.error(f"Unknown auth command: {args.auth_command}")
+        if args.command == "sdk":
+            if args.sdk_command == "list":
+                return _cmd_sdk_list(args)
+            if args.sdk_command == "install":
+                return _cmd_sdk_install(args)
+            if args.sdk_command == "download":
+                return _cmd_sdk_download(args)
+            parser.error(f"Unknown sdk command: {args.sdk_command}")
         if args.command == "deploy":
             return _cmd_deploy(args)
         if args.command == "start":
