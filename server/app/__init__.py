@@ -84,15 +84,11 @@ def create_app():
     from app.blueprints.deploy import deploy_bp
     from app.blueprints.desktop import desktop_bp
     from app.blueprints.index import index_bp
-    from app.blueprints.new import new_bp
     from app.blueprints.nodes import nodes_bp
     from app.blueprints.start import start_bp
-    from app.blueprints.stop import stop_bp
 
     app.register_blueprint(index_bp, url_prefix="/")
     app.register_blueprint(start_bp, url_prefix="/start")
-    app.register_blueprint(stop_bp, url_prefix="/stop")
-    app.register_blueprint(new_bp, url_prefix="/new")
     app.register_blueprint(deploy_bp, url_prefix="/deploy")
     app.register_blueprint(nodes_bp, url_prefix="/nodes")
     app.register_blueprint(api_bp, url_prefix="/api/v1")

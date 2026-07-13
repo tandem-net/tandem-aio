@@ -7,7 +7,6 @@ from flask_sqlalchemy import SQLAlchemy
 redis_client = FlaskRedis()
 db = SQLAlchemy()
 
-# API KEY SLOP
 
 def generate_api_key(length: int = 32) -> str:
     alphabet = string.ascii_letters + string.digits

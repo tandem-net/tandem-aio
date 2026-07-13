@@ -5,7 +5,6 @@ import json
 import logging
 import os
 import secrets
-import shutil
 import time
 import uuid
 
@@ -25,15 +24,11 @@ from app.utils.task_queue import (
     get_task,
     requeue_task,
 )
-from flask import Blueprint, Response, after_this_request, current_app, jsonify, request, send_file
+from flask import Blueprint, after_this_request, current_app, jsonify, request, send_file
 
 logger = logging.getLogger(__name__)
 
 nodes_bp = Blueprint("nodes", __name__)
-
-# 300MB
-STREAM_SIZE_BYTES = 300 * 1024 * 1024
-DUMMY_DATA = os.urandom(STREAM_SIZE_BYTES)
 
 
 def _extract_node_id() -> str:
@@ -107,47 +102,6 @@ def _task_mimetype(task: dict[str, str]) -> str:
     return "application/octet-stream"
 
 
-@nodes_bp.route("/download", methods=["GET"])
-def download():
-    return Response(
-        DUMMY_DATA,
-        mimetype="application/octet-stream",
-        headers={"Content-Length": str(STREAM_SIZE_BYTES)},
-    )
-
-
-@nodes_bp.route("/upload", methods=["POST"])
-def upload():
-    start_time = time.time()
-
-    with open(os.devnull, "wb") as sink:
-        shutil.copyfileobj(request.stream, sink)
-
-    duration = time.time() - start_time
-    return jsonify({"duration": duration})
-
-
-@nodes_bp.route("/ping", methods=["POST"])
-def ping():
-    node_id, _node, error = _require_node_auth()
-    if error:
-        return error
-
-    data = request.get_json(silent=True) or {}
-    timestamp = str(time.time())
-    metrics = {"last_seen": timestamp}
-
-    for field in ("latency", "download", "upload"):
-        value = data.get(field)
-        if value is not None:
-            metrics[field] = str(value)
-
-    redis_client.hset(f"node:{node_id}", mapping=metrics)
-    redis_client.sadd("nodes", node_id)
-
-    return jsonify({"status": "Metrics recorded"}), 200
-
-
 @nodes_bp.route("/health", methods=["POST"])
 def health():
     node_id, _node, error = _require_node_auth()
@@ -193,7 +147,6 @@ def register():
         if value is not None:
             metrics[field] = str(value)
 
-    # zatar sat on my wrist while I wrote this 
     redis_client.hset(f"node:{node_id}", mapping=metrics)
     redis_client.sadd("nodes", node_id)
 

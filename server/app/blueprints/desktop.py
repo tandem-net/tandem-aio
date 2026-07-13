@@ -9,7 +9,6 @@ Routes:
   GET  /api/v1/desktop/ping         — Server health + version (authenticated)
   GET  /api/v1/desktop/sdks         — List available SDKs
   GET  /api/v1/desktop/updates      — Check for desktop app updates
-  POST /api/v1/desktop/node/register — Register a node JWT (delegates to node system)
 """
 
 from __future__ import annotations

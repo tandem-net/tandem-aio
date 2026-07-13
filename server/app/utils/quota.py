@@ -52,8 +52,3 @@ def record_usage(api_key: str, instruction_count: int) -> None:
     # Only set TTL if the key has no expiry yet (ttl returns -1 for no expiry)
     if redis_client.ttl(key) < 0:
         redis_client.expire(key, QUOTA_RESET_SECONDS)
-
-
-def set_quota_limit(api_key: str, limit: int) -> None:
-    """Override the instruction quota limit for *api_key*."""
-    redis_client.set(get_quota_limit_key(api_key), str(limit))
