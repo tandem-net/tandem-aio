@@ -1,9 +1,0 @@
-{
-  "//": "Enables the `@/` path alias so imports read `@/components/...` instead of long relative chains like `../../../components/...`. Matches the convention used by create-next-app.",
-  "compilerOptions": {
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["./*"]
-    }
-  }
-}
