@@ -144,6 +144,27 @@ def resolve_server_url(server_url: str | None = None) -> str:
     return resolved.rstrip("/")
 
 
+def get_stored_server_url() -> str | None:
+    """Return the server URL saved via `tandem settings set-server-url`, if any."""
+    return _keyring_get(_KEYRING_SERVER_URL_KEY)
+
+
+def set_stored_server_url(server_url: str) -> str:
+    """Save a server URL so every command uses it without needing --server-url each time."""
+    normalized = server_url.strip().rstrip("/")
+    if not normalized:
+        raise ValueError("Server URL cannot be empty.")
+    if not normalized.startswith(("http://", "https://")):
+        raise ValueError("Server URL must start with http:// or https://")
+    _keyring_set(_KEYRING_SERVER_URL_KEY, normalized)
+    return normalized
+
+
+def clear_stored_server_url() -> None:
+    """Remove the saved server URL, falling back to TANDEM_SERVER_URL/SERVER_URL or the default."""
+    _keyring_delete(_KEYRING_SERVER_URL_KEY)
+
+
 # ---------------------------------------------------------------------------
 # Interactive prompts
 # ---------------------------------------------------------------------------

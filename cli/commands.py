@@ -16,13 +16,16 @@ from .analysis import Diagnostic
 from .app_config import load_project_config, write_project_config
 from .auth import (
     clear_auth_session,
+    clear_stored_server_url,
     get_api_key,
+    get_stored_server_url,
     load_auth_session,
     login_user,
     mask_secret,
     prompt_password,
     prompt_username,
     register_user,
+    set_stored_server_url,
     store_auth_session,
 )
 from .build import AnalysisFailure, build_project, clean_project, inspect_project
@@ -397,6 +400,31 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Show the currently authenticated user and session info.",
     )
 
+    settings_parser = subparsers.add_parser(
+        "settings",
+        help="View or change local CLI settings, like which server to talk to.",
+    )
+    settings_subparsers = settings_parser.add_subparsers(dest="settings_command", required=True)
+
+    settings_subparsers.add_parser(
+        "show",
+        help="Show the server URL currently in effect, and where it came from.",
+    )
+
+    settings_set_server_url_parser = settings_subparsers.add_parser(
+        "set-server-url",
+        help="Save a server URL so you don't need --server-url on every command.",
+    )
+    settings_set_server_url_parser.add_argument(
+        "server_url",
+        help="Server base URL, e.g. https://tandem.example.com or http://127.0.0.1:6767",
+    )
+
+    settings_subparsers.add_parser(
+        "reset-server-url",
+        help="Remove the saved server URL, reverting to TANDEM_SERVER_URL/SERVER_URL or the default.",
+    )
+
     sdk_parser = subparsers.add_parser(
         "sdk",
         help="Browse and fetch Tandem SDKs from the server's registry. Requires `tandem auth login`.",
@@ -665,6 +693,48 @@ def _cmd_auth_status(_args: argparse.Namespace) -> int:
     return 0
 
 
+def _describe_server_url() -> None:
+    """Print the server URL that's currently in effect, and why."""
+    stored = get_stored_server_url()
+    if stored:
+        print(f"Server URL: {stored}")
+        print("Source:     saved setting (tandem settings set-server-url)")
+        print("This is used by every command unless you pass --server-url.")
+        return
+
+    env_url = os.environ.get("TANDEM_SERVER_URL") or os.environ.get("SERVER_URL")
+    if env_url:
+        env_name = "TANDEM_SERVER_URL" if os.environ.get("TANDEM_SERVER_URL") else "SERVER_URL"
+        print(f"Server URL: {env_url}")
+        print(f"Source:     {env_name} environment variable")
+        print("This is used by every command unless you pass --server-url.")
+        return
+
+    print("No server URL is saved, so each command falls back to its own built-in default:")
+    print("  auth / sdk commands default to:     https://tandem.wnusair.org")
+    print("  deploy / start commands default to: http://127.0.0.1:6767")
+    print("\nRun `tandem settings set-server-url <url>` to point everything at one server.")
+
+
+def _cmd_settings_show(_args: argparse.Namespace) -> int:
+    _describe_server_url()
+    return 0
+
+
+def _cmd_settings_set_server_url(args: argparse.Namespace) -> int:
+    normalized = set_stored_server_url(args.server_url)
+    print(f"{Colors.GREEN}Saved server URL: {normalized}{Colors.RESET}")
+    print("Every command will use this now, unless you pass --server-url.")
+    return 0
+
+
+def _cmd_settings_reset_server_url(_args: argparse.Namespace) -> int:
+    clear_stored_server_url()
+    print(f"{Colors.GREEN}Cleared the saved server URL.{Colors.RESET}")
+    print("Commands will fall back to TANDEM_SERVER_URL/SERVER_URL or their built-in default.")
+    return 0
+
+
 def _format_sdk_versions(sdk: dict[str, Any]) -> str:
     versions = [v for v in (sdk.get("versions") or []) if isinstance(v, dict)]
     if versions:
@@ -859,6 +929,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             if args.auth_command == "status":
                 return _cmd_auth_status(args)
             parser.error(f"Unknown auth command: {args.auth_command}")
+        if args.command == "settings":
+            if args.settings_command == "show":
+                return _cmd_settings_show(args)
+            if args.settings_command == "set-server-url":
+                return _cmd_settings_set_server_url(args)
+            if args.settings_command == "reset-server-url":
+                return _cmd_settings_reset_server_url(args)
+            parser.error(f"Unknown settings command: {args.settings_command}")
         if args.command == "sdk":
             if args.sdk_command == "list":
                 return _cmd_sdk_list(args)

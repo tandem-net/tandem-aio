@@ -9,6 +9,7 @@ from typing import Any
 import requests
 
 from .app_config import load_project_config
+from .auth import get_stored_server_url
 from .build import build_project
 
 _REQUEST_TIMEOUT_SECONDS = 60
@@ -36,6 +37,7 @@ class StartResult:
 def _resolve_server_url(server_url: str | None) -> str:
     resolved = (
         server_url
+        or get_stored_server_url()
         or os.environ.get("TANDEM_SERVER_URL")
         or os.environ.get("SERVER_URL")
         or "http://127.0.0.1:6767"
