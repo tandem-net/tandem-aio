@@ -7,12 +7,18 @@ You do **not** need to run `python cli/main.py` or `python cli/cli.py` anymore.
 
 ## Install the command
 
-The CLI is packaged with a Python console entry point:
-
-- Linux/macOS: installs a `tandem` shell command
-- Windows: installs a `tandem.exe` launcher
-
 ### Linux / macOS
+
+The easiest way in is the installer script from the repo root -- it sets up its
+own private Python environment and puts `tandem` on your PATH, so you don't
+need to know anything about Python packaging:
+
+```bash
+./install.sh
+```
+
+If you're working on the CLI's own code, install it in editable mode instead
+so your local edits take effect immediately:
 
 ```bash
 python -m pip install -e ./cli
@@ -20,9 +26,14 @@ python -m pip install -e ./cli
 
 ### Windows (PowerShell)
 
+`install.sh` is Linux/macOS only for now. On Windows, install the console
+entry point directly:
+
 ```powershell
 py -m pip install -e .\cli
 ```
+
+This installs a `tandem.exe` launcher.
 
 Then verify it:
 
@@ -54,10 +65,26 @@ tandem manifest [config_path]
 tandem build [config_path]
 tandem auth register --username <username>
 tandem auth login --username <username>
+tandem sdk list
+tandem sdk install [name]
+tandem sdk download [name] --output <dir>
 tandem deploy [config_path]
 tandem start [config_path]
 tandem clean [config_path]
 ```
+
+`tandem sdk` commands require `tandem auth login` (or `register`) first --
+they ask the server what SDKs and versions are available. The `name` argument
+is optional: it auto-selects the SDK when there's only one available, and
+lists your options if there's more than one. `tandem sdk install` is the
+normal case -- it installs straight into whatever Python environment you
+currently have active (a virtualenv if one's active, otherwise whatever
+`python3` is on your PATH), so `import tandem` works right after. `tandem sdk
+download` is for when you just want the source files without installing them.
+
+Note this is a different `tandem` package than the one bundled inside the CLI
+for build-time task discovery (mentioned above) -- `tandem sdk install` gives
+you the standalone SDK meant for writing your own task code against.
 
 `tandem init`  works interactively by default: it asks a few quick questions, shows defaults, and lets you press Enter to accept them.
 
