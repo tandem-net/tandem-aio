@@ -65,6 +65,9 @@ tandem manifest [config_path]
 tandem build [config_path]
 tandem auth register --username <username>
 tandem auth login --username <username>
+tandem settings show
+tandem settings set-server-url <url>
+tandem settings reset-server-url
 tandem sdk list
 tandem sdk install [name]
 tandem sdk download [name] --output <dir>
@@ -72,6 +75,14 @@ tandem deploy [config_path]
 tandem start [config_path]
 tandem clean [config_path]
 ```
+
+`tandem settings set-server-url <url>` saves a server URL so you don't need
+`--server-url` on every command -- it applies across the board (auth, sdk,
+deploy, start), not just to whichever command you happened to run it from.
+`tandem settings show` tells you the URL currently in effect and why (a saved
+setting, an environment variable, or a built-in default), and `tandem settings
+reset-server-url` removes the saved override. An explicit `--server-url` flag
+always wins over the saved setting.
 
 `tandem sdk` commands require `tandem auth login` (or `register`) first --
 they ask the server what SDKs and versions are available. The `name` argument
