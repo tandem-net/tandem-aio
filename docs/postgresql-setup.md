@@ -36,12 +36,6 @@ export DATABASE_URL="postgresql://myuser:mypassword@localhost:5432/mydb"
 python server/run.py
 ```
 
-5. Verify DB connection with the provided test script:
-
-```bash
-python server/scripts/db_test.py
-```
-
 Notes:
 - The app reads `DATABASE_URL` (preferred) or `SQLALCHEMY_DATABASE_URI` from the environment.
 - We added `psycopg2-binary` to `requirements.txt` so SQLAlchemy can talk to Postgres.
