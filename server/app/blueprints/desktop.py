@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 import os
+from typing import Any
 
 from flask import Blueprint, jsonify, request
 
@@ -32,17 +33,43 @@ _DESKTOP_DOWNLOAD_URL = os.environ.get(
 )
 
 # ---------------------------------------------------------------------------
-# SDK registry — single source of truth for what the desktop can install
+# SDK registry — source of truth for what SDKs (and which versions of each)
+# the CLI and desktop app can discover and install.
+#
+# Each entry can list more than one version under "versions". We also keep
+# the older flat "version"/"download_url" fields around (see _serialize_sdk),
+# mirroring the latest version, so any existing client that only understands
+# one version per SDK keeps working.
 # ---------------------------------------------------------------------------
-_SDK_REGISTRY = [
+_SDK_REGISTRY: list[dict[str, Any]] = [
     {
         "name": "tandem-python-sdk",
-        "version": "0.1.0",
         "language": "Python",
-        "description": "Official Python SDK — task decorators and helper types for Tandem jobs",
-        "download_url": None,  # Bundled in the .deb, no server download needed
+        "description": "Official Python SDK — task decorators, RPC dispatch, and WASM building for Tandem jobs",
+        "versions": [
+            {"version": "0.1.0", "download_url": None},  # bundled with the CLI, no server download yet
+        ],
     },
 ]
+
+
+def _serialize_sdk(sdk: dict[str, Any]) -> dict[str, Any]:
+    """Shape one registry entry for the JSON response.
+
+    Includes the full "versions" list plus a flat version/download_url that
+    mirrors the latest version, so older clients that expect one version per
+    SDK still get something sensible.
+    """
+    versions = sdk.get("versions") or []
+    latest = versions[-1] if versions else {}
+    return {
+        "name": sdk["name"],
+        "language": sdk.get("language"),
+        "description": sdk.get("description"),
+        "version": latest.get("version"),
+        "download_url": latest.get("download_url"),
+        "versions": versions,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -81,7 +108,7 @@ def list_sdks():
             or query in (s.get("language") or "").lower()
             or query in (s.get("description") or "").lower()
         ]
-    return jsonify({"sdks": sdks}), 200
+    return jsonify({"sdks": [_serialize_sdk(s) for s in sdks]}), 200
 
 
 @desktop_bp.route("/updates", methods=["GET"])
