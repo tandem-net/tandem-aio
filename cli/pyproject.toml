@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tandem-cli"
+version = "0.1.0"
+description = "Tandem Python CLI for building, deploying, and starting Tandem WASM jobs"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "requests>=2.0",
+  "python-dotenv>=0.21.0",
+  "tomli>=2.0; python_version < '3.11'",
+  "py2wasm>=2.6.2",
+]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Operating System :: OS Independent",
+]
+
+[project.scripts]
+tandem = "tandem_cli.commands:main"
+
+# The CLI modules live directly under cli/ (flat layout), but we still want a
+# clean `tandem_cli` import name, so map the package to this directory.
+[tool.setuptools]
+package-dir = { "tandem_cli" = "." }
+packages = [
+  "tandem_cli",
+  "tandem_cli._bundled",
+  "tandem_cli._bundled.sdk",
+  "tandem_cli._bundled.sdk.python",
+  "tandem_cli._bundled.sdk.python.tandem",
+]
+
+[tool.setuptools.package-data]
+tandem_cli = ["dummy.wasm"]
