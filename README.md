@@ -41,7 +41,7 @@ tandem auth login
 # Start your node in the background -- it registers itself the first time
 tandem node start
 
-# ...or run it 24/7 (starts on boot, restarts if it crashes)
+# ...or run it in the background (starts on boot, restarts if it crashes)
 tandem node enable
 
 # See your login and whether the node is running

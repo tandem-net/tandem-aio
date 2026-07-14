@@ -211,7 +211,7 @@ echo ""
 echo "Next steps:"
 echo "  1. Log in:            tandem auth login"
 if [ "$NODE_INSTALLED" = "1" ]; then
-  echo "  2. Start your node:   tandem node start        (or run it 24/7: tandem node enable)"
+  echo "  2. Start your node:   tandem node start        (or run it in the background: tandem node enable)"
   echo "  3. Check on it:       tandem status"
   echo ""
   echo "Your node needs to be running before you can deploy or start a job."

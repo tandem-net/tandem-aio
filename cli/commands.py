@@ -943,7 +943,7 @@ def _require_node_running() -> None:
         raise RuntimeError(
             "The Tandem node isn't running, so there's no worker to run your job.\n"
             "  Start it now:   tandem node start\n"
-            "  Or run it 24/7: tandem node enable\n"
+            "  Or run it in the background: tandem node enable\n"
             "  Check status:   tandem status\n"
             "To bypass this check (e.g. in CI), set TANDEM_SKIP_NODE_CHECK=1."
         )

@@ -70,12 +70,19 @@ def _resolve_node_registration_token(server_dir: pathlib.Path) -> str:
 
 def create_app():
     app = Flask(__name__)
+
     server_dir = pathlib.Path(__file__).resolve().parents[1]
 
     database_uri = os.environ.get("DATABASE_URL")
     if not database_uri:
-        default_db_path = server_dir / "dev.db"
-        database_uri = f"sqlite:///{default_db_path}"
+        database_uri = f"sqlite:///{server_dir / 'dev.db'}"
+    elif database_uri.startswith("sqlite:///") and not database_uri.startswith("sqlite:////"):
+        # Relative sqlite paths are ambiguous (resolved against the process's cwd,
+        # not this file's location), so anchor them to the server/ directory.
+        relative_path = database_uri[len("sqlite:///") :]
+        if not pathlib.Path(relative_path).is_absolute():
+            absolute_path = (server_dir / relative_path).resolve()
+            database_uri = f"sqlite:///{absolute_path}"
 
     lower = database_uri.lower()
     allowed_prefixes = (
