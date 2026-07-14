@@ -85,15 +85,19 @@ tandem node disable    # turn that off, back to manual start/stop
 For the full per-platform command list (including the Windows `install.bat`), see
 [docs/execution-setup.md](docs/execution-setup.md).
 
-## Downloadable node binaries
+## Downloadable installers
 
-You can also install the node from a prebuilt package instead of building it:
+Don't want to run `install.sh` from a checkout? A prebuilt package gives you the
+exact same two commands (`tandem` and `tandem-node`) from a single file — no
+Python, pip, or Rust needed on the machine:
 
-- **Linux** — a `.deb`: `sudo dpkg -i tandem-node_<version>_amd64.deb`
+- **Linux** — a `.deb`: `sudo apt install ./tandem_<version>_amd64.deb`
+  (`sudo dpkg -i` works too). Installing it puts both `tandem` and `tandem-node`
+  in `/usr/bin`, so `tandem --help` works right after.
 - **macOS** — a `.dmg`: open it and double-click `Install.command`
-- **Windows** — a `.exe`: drop `tandem-node.exe` somewhere on your PATH
+- **Windows** — use `install.bat`; the released `.exe` is just the standalone node
 
 These aren't shipped in the repo — build them with the packaging scripts (or let
-CI build them). See [node/packaging/README.md](node/packaging/README.md) and the
+CI build them). See [packaging/README.md](packaging/README.md) and the
 "Building the downloadable packages" section of
 [docs/execution-setup.md](docs/execution-setup.md).

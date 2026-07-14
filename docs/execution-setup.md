@@ -37,12 +37,13 @@ tandem node enable                        # run 24/7 (starts on boot, restarts o
 tandem status                             # confirm: Node: running
 ```
 
-Prefer a prebuilt package over building from source? Build (or download) the
-`.deb`, install it, then run the installer for just the CLI:
+Prefer a prebuilt package over building from source? The `.deb` bundles both
+commands (`tandem` and `tandem-node`), so you don't need the checkout or
+`install.sh` at all:
 
 ```bash
-sudo dpkg -i tandem-node_<version>_amd64.deb
-cd tandem-aio && TANDEM_SKIP_NODE=1 ./install.sh
+sudo apt install ./tandem_<version>_amd64.deb   # or: sudo dpkg -i tandem_<version>_amd64.deb
+tandem --help                                   # both commands are on your PATH now
 # then the same settings / auth / enable / status steps as above
 ```
 
@@ -61,9 +62,9 @@ tandem node enable                        # run 24/7 (starts on login, restarts 
 tandem status
 ```
 
-Prefer the prebuilt `.dmg`? Open it, double-click **Install.command**, then run
-`TANDEM_SKIP_NODE=1 ./install.sh` for the CLI and do the settings / auth / enable
-/ status steps.
+Prefer the prebuilt `.dmg`? Open it and double-click **Install.command** -- that
+installs both commands, so you can go straight to the settings / auth / enable /
+status steps.
 
 ---
 
@@ -129,24 +130,29 @@ confirm -- type anything else and it does nothing.
 
 Yes -- these are built on demand, not shipped in the repo. Each one is built on
 its own OS (that's the reliable way; cross-building a `.dmg` or `.exe` from Linux
-is a headache). Build outputs land in `node/packaging/dist/`.
+is a headache). Build outputs land in `packaging/dist/`.
+
+The `.deb` and `.dmg` bundle both commands (`tandem` + `tandem-node`). Building
+the CLI binary needs Python 3.10+, which the scripts set up in a throwaway
+virtualenv, so there's nothing to install first.
 
 **Linux `.deb`** -- on any machine with `dpkg-deb`:
 
 ```bash
-bash node/packaging/build-deb.sh
-# -> node/packaging/dist/tandem-node_<version>_amd64.deb
-sudo dpkg -i node/packaging/dist/tandem-node_*.deb      # to install it locally
+bash packaging/build-deb.sh
+# -> packaging/dist/tandem_<version>_amd64.deb
+sudo apt install ./packaging/dist/tandem_*.deb      # to install it locally
 ```
 
 **macOS `.dmg`** -- on a Mac:
 
 ```bash
-bash node/packaging/build-dmg.sh
-# -> node/packaging/dist/tandem-node-macos-<arch>.dmg
+bash packaging/build-dmg.sh
+# -> packaging/dist/tandem-macos-<arch>.dmg
 ```
 
-**Windows `.exe`** -- on Windows with Rust (the binary itself is the deliverable):
+**Windows `.exe`** -- on Windows with Rust. The node binary is the deliverable;
+Windows users install the `tandem` command with `install.bat`.
 
 ```bat
 cargo build --release --manifest-path node\Cargo.toml
@@ -164,4 +170,4 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-More detail in [node/packaging/README.md](../node/packaging/README.md).
+More detail in [packaging/README.md](../packaging/README.md).

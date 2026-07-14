@@ -17,6 +17,10 @@ need to know anything about Python packaging:
 ./install.sh
 ```
 
+Not working from a checkout? The prebuilt `.deb` (Linux) and `.dmg` (macOS) carry
+the `tandem` command with them, so installing one is enough -- no Python needed.
+See [packaging/README.md](../packaging/README.md).
+
 If you're working on the CLI's own code, install it in editable mode instead
 so your local edits take effect immediately:
 
