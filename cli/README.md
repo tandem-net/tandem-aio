@@ -88,7 +88,13 @@ tandem node disable
 tandem deploy [config_path]
 tandem start [config_path]
 tandem clean [config_path]
+tandem uninstall
 ```
+
+`tandem uninstall` completely removes Tandem from the machine -- it stops the
+node, clears your saved login, and deletes `~/.tandem` and the `tandem` command.
+Because it's destructive, it prints a random 6-digit code you have to type back
+before it does anything.
 
 `tandem status` shows whether you're logged in and whether your node is running.
 The `tandem node` commands run the compute node in the background: `start`

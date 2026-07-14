@@ -112,6 +112,17 @@ The node must be running before `tandem deploy` or `tandem start` will do
 anything -- that's intentional. If you ever need to bypass that check (say in a
 CI script), set `TANDEM_SKIP_NODE_CHECK=1`.
 
+## Uninstalling
+
+```bash
+tandem uninstall
+```
+
+This removes Tandem completely: it stops the node (and any 24/7 service), clears
+your saved login, and deletes `~/.tandem` and the `tandem` command. Because
+there's no undo, it prints a random 6-digit code you have to type back to
+confirm -- type anything else and it does nothing.
+
 ---
 
 ## Building the downloadable packages (.deb / .dmg / .exe)
