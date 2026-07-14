@@ -74,14 +74,20 @@ echo.
 echo Tandem CLI installed.
 
 REM 5. If your server needs a node registration token, save it now so `tandem
-REM node start` doesn't need it exported by hand every session. We check the
-REM environment first, then fall back to this repo's own .env file, since
-REM that's where a local dev server's token normally lives.
+REM node start` doesn't need it exported by hand every session. We check, in
+REM order: the environment, this repo's own .env file (where a local dev
+REM server's token normally lives), and finally the token the server
+REM auto-generates on its own first run -- so if you've already started the
+REM server once on this same machine, this just finds it.
 set "REGISTRATION_TOKEN=%TANDEM_NODE_REGISTRATION_TOKEN%"
 set "TOKEN_SOURCE=the environment"
 if not defined REGISTRATION_TOKEN if exist "%REPO_ROOT%\.env" (
   for /f "tokens=1,* delims==" %%A in ('findstr /b "TANDEM_NODE_REGISTRATION_TOKEN=" "%REPO_ROOT%\.env"') do set "REGISTRATION_TOKEN=%%B"
   set "TOKEN_SOURCE=%REPO_ROOT%\.env"
+)
+if not defined REGISTRATION_TOKEN if exist "%REPO_ROOT%\server\keys\node_registration_token.txt" (
+  set /p REGISTRATION_TOKEN=<"%REPO_ROOT%\server\keys\node_registration_token.txt"
+  set "TOKEN_SOURCE=the server's auto-generated token (%REPO_ROOT%\server\keys\node_registration_token.txt)"
 )
 
 if defined REGISTRATION_TOKEN (

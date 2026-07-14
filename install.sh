@@ -85,14 +85,20 @@ echo "Linked: $BIN_DIR/tandem -> $VENV_DIR/bin/tandem"
 echo ""
 
 # 6. If your server needs a node registration token, save it now so `tandem node
-# start` doesn't need it exported by hand every session. We check the
-# environment first, then fall back to this repo's own .env file, since that's
-# where a local dev server's token normally lives.
+# start` doesn't need it exported by hand every session. We check, in order:
+# the environment, this repo's own .env file (where a local dev server's token
+# normally lives), and finally the token the server auto-generates on its own
+# first run (server/keys/node_registration_token.txt) -- so if you've already
+# started the server once on this same machine, this just finds it.
 REGISTRATION_TOKEN="${TANDEM_NODE_REGISTRATION_TOKEN:-}"
 TOKEN_SOURCE="the environment"
 if [ -z "$REGISTRATION_TOKEN" ] && [ -f "$REPO_ROOT/.env" ]; then
   REGISTRATION_TOKEN="$(grep -m1 '^TANDEM_NODE_REGISTRATION_TOKEN=' "$REPO_ROOT/.env" | cut -d'=' -f2-)"
   TOKEN_SOURCE="$REPO_ROOT/.env"
+fi
+if [ -z "$REGISTRATION_TOKEN" ] && [ -f "$REPO_ROOT/server/keys/node_registration_token.txt" ]; then
+  REGISTRATION_TOKEN="$(cat "$REPO_ROOT/server/keys/node_registration_token.txt")"
+  TOKEN_SOURCE="the server's auto-generated token ($REPO_ROOT/server/keys/node_registration_token.txt)"
 fi
 
 if [ -n "$REGISTRATION_TOKEN" ]; then
