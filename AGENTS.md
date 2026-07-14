@@ -18,3 +18,5 @@ These rules dictate how code should be written, styled, and committed in this re
 ## 4. Working
 - Make sure that whenever you are making changes, you actually test them comprehensivly in a manner that is similar to production. dont create a bunch of junk files iwthout deleting them.
 - Make sure your changes work via tests similar to production, and then delete any testing files needed.
+
+IMPORTANT, VERY IMPORTANT: NEVER ADD YOURSELF AS A CONTRIBUTOR TO A COMMIT OR COAUTHOR. NEVER.
