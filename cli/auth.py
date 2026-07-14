@@ -22,6 +22,7 @@ import json
 import logging
 import os
 import stat
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -331,6 +332,7 @@ def refresh_access_token(server_url: str | None = None) -> str | None:
     if not refresh_token:
         return None
     resolved_server_url = resolve_server_url(server_url)
+    reason: str | None = None
     try:
         response = requests.post(
             f"{resolved_server_url}/api/v1/auth/refresh",
@@ -343,8 +345,17 @@ def refresh_access_token(server_url: str | None = None) -> str | None:
             if new_access_token:
                 _keyring_set(_KEYRING_ACCESS_TOKEN_KEY, new_access_token)
                 return new_access_token
+            reason = "the server's response was missing an access token"
+        else:
+            reason = f"the server returned {response.status_code}"
     except Exception as exc:
-        logger.debug("Token refresh failed: %s", exc)
+        reason = str(exc)
+
+    print(
+        f"warning: Could not refresh your session ({reason}). "
+        "If commands start failing with auth errors, run `tandem auth login` again.",
+        file=sys.stderr,
+    )
     return None
 
 

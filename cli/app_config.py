@@ -78,9 +78,14 @@ def load_project_config(path: str | Path) -> ProjectConfig:
 
     config_path = Path(path).expanduser().resolve()
     if not config_path.exists():
-        raise FileNotFoundError(f"Project config not found: {config_path}")
+        raise FileNotFoundError(
+            f"Project config not found: {config_path} -- run `tandem init` to create one."
+        )
 
-    data = tomllib.loads(config_path.read_text(encoding="utf-8"))
+    try:
+        data = tomllib.loads(config_path.read_text(encoding="utf-8"))
+    except tomllib.TOMLDecodeError as exc:
+        raise ValueError(f"Could not parse {config_path}: {exc}") from exc
     project = _require_table(data, "project")
     python_section = data.get("python") or {}
     if not isinstance(python_section, dict):

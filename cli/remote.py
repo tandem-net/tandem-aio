@@ -9,7 +9,7 @@ from typing import Any
 import requests
 
 from .app_config import load_project_config
-from .auth import get_stored_server_url
+from .auth import get_api_key, get_stored_server_url
 from .build import build_project
 
 _REQUEST_TIMEOUT_SECONDS = 60
@@ -46,10 +46,13 @@ def _resolve_server_url(server_url: str | None) -> str:
 
 
 def _resolve_api_key(api_key: str | None) -> str:
-    resolved = (api_key or os.environ.get("TANDEM_API_KEY") or "").strip()
+    resolved = (
+        api_key or os.environ.get("TANDEM_API_KEY") or get_api_key() or ""
+    ).strip()
     if not resolved:
         raise RuntimeError(
-            "Missing API key. Pass --api-key, set TANDEM_API_KEY in the environment, or store it in a local .env file with `tandem auth login` or `tandem auth register`."
+            "Missing API key. Run `tandem auth login` (or `tandem auth register`) "
+            "to store one, or pass --api-key, or set TANDEM_API_KEY."
         )
     return resolved
 

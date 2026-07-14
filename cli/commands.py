@@ -11,6 +11,7 @@ from typing import Any, Sequence
 
 import os
 
+import requests
 from dotenv import find_dotenv, load_dotenv
 
 from .analysis import Diagnostic
@@ -43,6 +44,7 @@ from .node_service import (
     node_is_running,
     register_node_now,
     resolve_node_server_url,
+    resolve_registration_token,
     start_node,
     stop_node,
     tail_log,
@@ -998,6 +1000,13 @@ def _print_node_status() -> None:
     if not status.running:
         print("  Start it with:  tandem node start")
 
+    if not status.node_id and not resolve_registration_token():
+        print(
+            "  No registration token saved -- if your server requires one, "
+            "`tandem node start` will fail with 401 until you run: "
+            "tandem settings set-registration-token <token>"
+        )
+
 
 def _cmd_status(_args: argparse.Namespace) -> int:
     session = load_auth_session()
@@ -1012,6 +1021,21 @@ def _cmd_status(_args: argparse.Namespace) -> int:
     return 0
 
 
+def _registration_failure_hint(message: str) -> str | None:
+    """A concrete next step for the specific registration failures we know how
+    to fix. Returns None for anything else, so we don't guess at unrelated
+    errors and print a hint that doesn't actually apply."""
+    if "registration bearer token" in message or "registration token" in message:
+        return (
+            "This server requires a node registration token. Find the one it "
+            "generated -- check its startup log, or "
+            "server/keys/node_registration_token.txt if you're running it "
+            "yourself -- then run:\n"
+            "  tandem settings set-registration-token <token>"
+        )
+    return None
+
+
 def _register_if_needed(server_url: str) -> int | None:
     """Register this machine if it hasn't been yet, telling the user how it went.
     Returns an exit code to bail out with on failure, or None to keep going."""
@@ -1021,6 +1045,9 @@ def _register_if_needed(server_url: str) -> int | None:
     result = register_node_now(server_url)
     if not result.ok:
         print(f"{Colors.RED}Registration failed: {result.message}{Colors.RESET}", file=sys.stderr)
+        hint = _registration_failure_hint(result.message)
+        if hint:
+            print(hint, file=sys.stderr)
         return 1
     print(f"{Colors.GREEN}Registered as {result.node_id}.{Colors.RESET}")
     return None
@@ -1336,6 +1363,25 @@ def main(argv: Sequence[str] | None = None) -> int:
             parser.error(f"Unknown node command: {args.node_command}")
         if args.command == "uninstall":
             return _cmd_uninstall(args)
+    except requests.exceptions.ConnectionError as exc:
+        url = getattr(getattr(exc, "request", None), "url", None)
+        where = f" at {url}" if url else ""
+        print(
+            f"error: Couldn't reach the Tandem server{where}. "
+            "Check that it's running and that your server URL is correct "
+            "(`tandem settings show`).",
+            file=sys.stderr,
+        )
+        return 1
+    except requests.exceptions.Timeout as exc:
+        url = getattr(getattr(exc, "request", None), "url", None)
+        where = f" at {url}" if url else ""
+        print(
+            f"error: Timed out waiting for the Tandem server to respond{where}. "
+            "It may be slow, overloaded, or unreachable.",
+            file=sys.stderr,
+        )
+        return 1
     except Exception as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1

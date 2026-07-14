@@ -89,7 +89,13 @@ def discover_project(config: ProjectConfig) -> DiscoveredProject:
                 "custom SDK checkout, set `project.sdk_path` in the CLI config."
             ) from exc
 
-        sdk_descriptor = describe_target(module)
+        try:
+            sdk_descriptor = describe_target(module)
+        except Exception as exc:
+            raise RuntimeError(
+                f"Tandem SDK failed while inspecting {config.entry_path}: {exc}. "
+                "Check your task decorators/annotations against the SDK docs."
+            ) from exc
         task_descriptors = tuple(sdk_descriptor.tasks)
         tasks = {task.export_name: task.task for task in task_descriptors}
 
