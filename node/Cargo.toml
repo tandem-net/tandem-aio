@@ -3,6 +3,12 @@ name = "node"
 version = "0.1.0"
 edition = "2024"
 
+# The compiled worker is called `tandem-node` so it reads clearly on PATH and in
+# service files, even though the crate itself is still named `node`.
+[[bin]]
+name = "tandem-node"
+path = "src/main.rs"
+
 [dependencies]
 wasmtime = "31"
 wasmtime-wasi = "31"

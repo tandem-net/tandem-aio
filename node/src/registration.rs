@@ -67,12 +67,8 @@ pub async fn register_node(
 
     let reg: RegisterResponse = resp.json().await?;
 
-    eprintln!("[registration] ✓  registered successfully");
-    eprintln!("[registration]    node_id    = {}", reg.node_id);
-    eprintln!("[registration]    node_token = {}", reg.node_token);
-    eprintln!("[registration] Save these values to your .env file:");
-    eprintln!("    TANDEM_NODE_ID={}", reg.node_id);
-    eprintln!("    TANDEM_NODE_TOKEN={}", reg.node_token);
+    eprintln!("[registration] registered successfully");
+    eprintln!("[registration]    node_id = {}", reg.node_id);
 
     Ok((reg.node_id, reg.node_token))
 }
