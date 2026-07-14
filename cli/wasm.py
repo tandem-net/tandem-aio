@@ -49,16 +49,20 @@ def build_wasm(task: Any) -> bytes:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
             )
-            with open(wasm_path, "rb") as f:
-                return f.read()
-        except subprocess.CalledProcessError as e:
-            # Fallback for Python 3.12 where py2wasm is not yet supported
-            import sys
-            from pathlib import Path
-            print(f"Warning: py2wasm failed (likely due to Python 3.12). Emitting dummy WASM. Error: {e.stderr.decode('utf-8', errors='replace')}", file=sys.stderr)
-            
-            dummy_wasm_path = Path(__file__).parent / "dummy.wasm"
-            if dummy_wasm_path.exists():
-                return dummy_wasm_path.read_bytes()
-            else:
-                raise RuntimeError("Dummy WASM not found and compilation failed.")
+        except FileNotFoundError as exc:
+            raise RuntimeError(
+                "Could not find py2wasm. It's installed automatically alongside the "
+                "CLI (see cli/pyproject.toml) -- try reinstalling with "
+                "`python -m pip install --force-reinstall ./cli`, or install it "
+                "directly with `pip install py2wasm`."
+            ) from exc
+        except subprocess.CalledProcessError as exc:
+            stderr_text = exc.stderr.decode("utf-8", errors="replace") if exc.stderr else ""
+            raise RuntimeError(
+                f"py2wasm failed to compile `{module_name}.{func_name}` to WASM "
+                f"(this often means the task isn't compatible with py2wasm yet, "
+                f"e.g. on Python 3.12+):\n{stderr_text}"
+            ) from exc
+
+        with open(wasm_path, "rb") as f:
+            return f.read()

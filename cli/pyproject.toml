@@ -41,5 +41,4 @@ packages = [
 ]
 
 [tool.setuptools.package-data]
-tandem_cli = ["dummy.wasm"]
 "tandem_cli._bundled.sdk.python_sdk" = ["pyproject.toml", "README.md"]
