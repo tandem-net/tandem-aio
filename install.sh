@@ -84,6 +84,81 @@ echo "Tandem CLI installed."
 echo "Linked: $BIN_DIR/tandem -> $VENV_DIR/bin/tandem"
 echo ""
 
+# 6. Install the compute node. This is the Rust program that actually runs your
+# tasks; the CLI starts and stops it for you, but it has to exist on disk first.
+# We try hard to make this work no matter what you have installed, and when we
+# can't, we point you at exactly what to install rather than failing silently.
+# (Set TANDEM_SKIP_NODE=1 to install just the CLI and skip this.)
+NODE_SRC_DIR="$REPO_ROOT/node"
+NODE_HOME_BIN_DIR="$HOME/.tandem/bin"
+NODE_DEST="$NODE_HOME_BIN_DIR/tandem-node"
+mkdir -p "$NODE_HOME_BIN_DIR"
+
+install_node_binary() {
+  # An explicit prebuilt binary wins. This is what the download-a-release flow
+  # feeds in: `TANDEM_NODE_BIN=/path/to/tandem-node ./install.sh`.
+  if [ -n "${TANDEM_NODE_BIN:-}" ]; then
+    if [ -f "$TANDEM_NODE_BIN" ]; then
+      echo "Using the prebuilt node binary at $TANDEM_NODE_BIN"
+      install -m 0755 "$TANDEM_NODE_BIN" "$NODE_DEST"
+      return 0
+    fi
+    echo "warning: TANDEM_NODE_BIN is set but '$TANDEM_NODE_BIN' does not exist; ignoring it."
+  fi
+
+  # Otherwise build it from the source in this repo, if Rust is available.
+  if command -v cargo >/dev/null 2>&1; then
+    echo "Building the Tandem node from source (this can take a few minutes the first time)..."
+    if cargo build --release --manifest-path "$NODE_SRC_DIR/Cargo.toml"; then
+      install -m 0755 "$NODE_SRC_DIR/target/release/tandem-node" "$NODE_DEST"
+      return 0
+    fi
+    echo "warning: building the node failed -- see the cargo output above."
+    return 1
+  fi
+
+  # No Cargo, but maybe there's already a build lying around from before.
+  if [ -f "$NODE_SRC_DIR/target/release/tandem-node" ]; then
+    echo "Cargo isn't installed, but found an existing node build -- using it."
+    install -m 0755 "$NODE_SRC_DIR/target/release/tandem-node" "$NODE_DEST"
+    return 0
+  fi
+
+  # Nothing we can do on our own. The caller prints guidance.
+  return 2
+}
+
+NODE_INSTALLED=0
+if [ "${TANDEM_SKIP_NODE:-0}" = "1" ]; then
+  echo "Skipping the node install because TANDEM_SKIP_NODE=1."
+  echo ""
+elif install_node_binary; then
+  NODE_INSTALLED=1
+  echo "Tandem node installed at $NODE_DEST"
+  echo ""
+else
+  NODE_RC=$?
+  echo ""
+  if [ "$NODE_RC" = "2" ]; then
+    echo "Could not install the Tandem node automatically: Rust (cargo) isn't installed."
+  else
+    echo "The Tandem node did not build."
+  fi
+  echo "The CLI itself is installed and works -- you just can't start a node yet."
+  echo "Pick whichever is easier for you:"
+  echo ""
+  echo "  A) Install Rust, then re-run ./install.sh:"
+  echo "       curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
+  echo "       (see https://rustup.rs -- you may also need a C compiler:"
+  echo "        'sudo apt install build-essential' on Debian/Ubuntu, or"
+  echo "        'xcode-select --install' on macOS)"
+  echo ""
+  echo "  B) Download a prebuilt node binary for your platform from the project's"
+  echo "     releases, then re-run pointing at it:"
+  echo "       TANDEM_NODE_BIN=/path/to/tandem-node ./install.sh"
+  echo ""
+fi
+
 case ":$PATH:" in
   *":$BIN_DIR:"*)
     echo "Run: tandem --help"
@@ -105,4 +180,17 @@ if command -v tandem >/dev/null 2>&1; then
     echo "Note: 'tandem' currently resolves to $FOUND_AT, which comes before"
     echo "$BIN_DIR on your PATH. Adjust your PATH order if you want this install to win."
   fi
+fi
+
+# A short, friendly "what now?" so people aren't left guessing.
+echo ""
+echo "Next steps:"
+echo "  1. Log in:            tandem auth login"
+if [ "$NODE_INSTALLED" = "1" ]; then
+  echo "  2. Start your node:   tandem node start        (or run it 24/7: tandem node enable)"
+  echo "  3. Check on it:       tandem status"
+  echo ""
+  echo "Your node needs to be running before you can deploy or start a job."
+else
+  echo "  2. Install the node (see the note above), then: tandem node start"
 fi
