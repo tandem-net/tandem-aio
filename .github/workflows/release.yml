@@ -1,10 +1,15 @@
-# Builds the downloadable node binaries for every platform and attaches them to
-# a GitHub Release.
+# Builds the downloadable Tandem installers for every platform and attaches them
+# to a GitHub Release.
 #
 # The trick to making this transferable is to build each package on its own
-# native runner -- the .deb on Linux, the .exe on Windows, the .dmg on macOS --
+# native runner -- the .deb on Linux, the .dmg on macOS, the .exe on Windows --
 # instead of trying to cross-compile from one machine. Each job compiles the node
-# with Rust, packages it, and uploads the result.
+# with Rust, freezes the CLI into a binary with PyInstaller, packages them, and
+# uploads the result.
+#
+# The Linux .deb and macOS .dmg both bundle BOTH commands (tandem + tandem-node),
+# so installing one is all a user needs. Windows still ships just the node .exe;
+# Windows users install the CLI with install.bat (see packaging/README.md).
 #
 # To cut a release: push a tag that starts with "v", e.g.
 #   git tag v0.1.0
@@ -48,35 +53,45 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
+      # The .deb and .dmg freeze the Python CLI into a binary, which needs Python.
+      # The Windows .exe job only ships the node, so it can skip this.
+      - name: Set up Python
+        if: matrix.artifact != 'exe'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       - name: Build the node
         run: cargo build --release --manifest-path node/Cargo.toml
 
+      # Each packaging script builds the CLI binary itself if it's missing, so
+      # these steps produce a package holding both commands.
       - name: Package .deb (Linux)
         if: matrix.artifact == 'deb'
-        run: bash node/packaging/build-deb.sh
+        run: bash packaging/build-deb.sh
 
       - name: Package .dmg (macOS)
         if: matrix.artifact == 'dmg'
-        run: bash node/packaging/build-dmg.sh
+        run: bash packaging/build-dmg.sh
 
       - name: Stage .exe (Windows)
         if: matrix.artifact == 'exe'
         shell: bash
         run: |
-          mkdir -p node/packaging/dist
-          cp node/target/release/tandem-node.exe node/packaging/dist/tandem-node-windows-x86_64.exe
+          mkdir -p packaging/dist
+          cp node/target/release/tandem-node.exe packaging/dist/tandem-node-windows-x86_64.exe
 
       # Keep the built package around on every run (including workflow_dispatch),
       # so you can download and test it even when there's no release to attach to.
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: tandem-node-${{ matrix.artifact }}
-          path: node/packaging/dist/*
+          name: tandem-${{ matrix.artifact }}
+          path: packaging/dist/*
 
       # Only attach to a Release when this run was triggered by a version tag.
       - name: Attach to the release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: node/packaging/dist/*
+          files: packaging/dist/*
