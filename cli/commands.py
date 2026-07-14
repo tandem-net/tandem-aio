@@ -17,8 +17,10 @@ from .analysis import Diagnostic
 from .app_config import load_project_config, write_project_config
 from .auth import (
     clear_auth_session,
+    clear_stored_registration_token,
     clear_stored_server_url,
     get_api_key,
+    get_stored_registration_token,
     get_stored_server_url,
     load_auth_session,
     login_user,
@@ -26,6 +28,7 @@ from .auth import (
     prompt_password,
     prompt_username,
     register_user,
+    set_stored_registration_token,
     set_stored_server_url,
     store_auth_session,
 )
@@ -440,6 +443,20 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Remove the saved server URL, reverting to TANDEM_SERVER_URL/SERVER_URL or the default.",
     )
 
+    settings_set_registration_token_parser = settings_subparsers.add_parser(
+        "set-registration-token",
+        help="Save the node registration token so `tandem node start` doesn't need it exported every session.",
+    )
+    settings_set_registration_token_parser.add_argument(
+        "registration_token",
+        help="The bearer token your server's TANDEM_NODE_REGISTRATION_TOKEN is set to.",
+    )
+
+    settings_subparsers.add_parser(
+        "reset-registration-token",
+        help="Remove the saved registration token, reverting to TANDEM_NODE_REGISTRATION_TOKEN or none.",
+    )
+
     sdk_parser = subparsers.add_parser(
         "sdk",
         help="Browse and fetch Tandem SDKs from the server's registry. Requires `tandem auth login`.",
@@ -803,8 +820,31 @@ def _describe_server_url() -> None:
     print("\nRun `tandem settings set-server-url <url>` to point everything at one server.")
 
 
+def _describe_registration_token() -> None:
+    """Print whether a node registration token is currently in effect, and where
+    it came from. Most servers don't require one, so nothing set is the normal
+    case -- this is here for the ones that do."""
+    stored = get_stored_registration_token()
+    if stored:
+        print(f"\nNode registration token: {mask_secret(stored)}")
+        print("Source:                  saved setting (tandem settings set-registration-token)")
+        return
+
+    env_token = os.environ.get("TANDEM_NODE_REGISTRATION_TOKEN")
+    if env_token:
+        print(f"\nNode registration token: {mask_secret(env_token)}")
+        print("Source:                  TANDEM_NODE_REGISTRATION_TOKEN environment variable")
+        return
+
+    print("\nNo node registration token saved.")
+    print("Only needed if your server sets TANDEM_NODE_REGISTRATION_TOKEN -- if it does,")
+    print("`tandem node start` will fail with 401 until you run:")
+    print("  tandem settings set-registration-token <token>")
+
+
 def _cmd_settings_show(_args: argparse.Namespace) -> int:
     _describe_server_url()
+    _describe_registration_token()
     return 0
 
 
@@ -819,6 +859,20 @@ def _cmd_settings_reset_server_url(_args: argparse.Namespace) -> int:
     clear_stored_server_url()
     print(f"{Colors.GREEN}Cleared the saved server URL.{Colors.RESET}")
     print("Commands will fall back to TANDEM_SERVER_URL/SERVER_URL or their built-in default.")
+    return 0
+
+
+def _cmd_settings_set_registration_token(args: argparse.Namespace) -> int:
+    saved = set_stored_registration_token(args.registration_token)
+    print(f"{Colors.GREEN}Saved node registration token: {mask_secret(saved)}{Colors.RESET}")
+    print("`tandem node start` will send this automatically now -- no more exporting it by hand.")
+    return 0
+
+
+def _cmd_settings_reset_registration_token(_args: argparse.Namespace) -> int:
+    clear_stored_registration_token()
+    print(f"{Colors.GREEN}Cleared the saved registration token.{Colors.RESET}")
+    print("Falls back to TANDEM_NODE_REGISTRATION_TOKEN if that's still exported.")
     return 0
 
 
@@ -1243,6 +1297,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 return _cmd_settings_set_server_url(args)
             if args.settings_command == "reset-server-url":
                 return _cmd_settings_reset_server_url(args)
+            if args.settings_command == "set-registration-token":
+                return _cmd_settings_set_registration_token(args)
+            if args.settings_command == "reset-registration-token":
+                return _cmd_settings_reset_registration_token(args)
             parser.error(f"Unknown settings command: {args.settings_command}")
         if args.command == "sdk":
             if args.sdk_command == "list":

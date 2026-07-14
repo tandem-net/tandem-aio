@@ -30,6 +30,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from .auth import get_stored_registration_token
 from .node_paths import (
     NODE_HOME,
     ensure_home,
@@ -80,6 +81,17 @@ def resolve_node_server_url(server_url: str | None = None) -> str:
     return resolve_job_server_url(server_url)
 
 
+def resolve_registration_token() -> str:
+    """The bearer token to send when registering with a server that requires one.
+
+    Checked in the same order as the saved server URL: a setting saved with
+    `tandem settings set-registration-token` wins first (so it survives across
+    terminal sessions), then TANDEM_NODE_REGISTRATION_TOKEN in the environment
+    for people who'd rather export it than save it. Empty string means "no
+    token" -- most servers don't require one."""
+    return get_stored_registration_token() or os.environ.get("TANDEM_NODE_REGISTRATION_TOKEN") or ""
+
+
 def build_node_env(server_url: str) -> dict[str, str]:
     """The environment a launched node inherits: the current environment plus the
     server URL and the paths to its home files. We deliberately drop any node
@@ -92,6 +104,9 @@ def build_node_env(server_url: str) -> dict[str, str]:
     env.pop("TANDEM_NODE_ID", None)
     env.pop("TANDEM_NODE_TOKEN", None)
     env.pop("TANDEM_NODE_REGISTER_ONLY", None)
+    registration_token = resolve_registration_token()
+    if registration_token:
+        env["TANDEM_NODE_REGISTRATION_TOKEN"] = registration_token
     return env
 
 
@@ -420,7 +435,7 @@ def _service_environment_lines(server_url: str) -> list[tuple[str, str]]:
         ("TANDEM_NODE_STATE_PATH", str(state_file())),
         ("TANDEM_PRIVATE_KEY_PATH", str(private_key_file())),
     ]
-    token = os.environ.get("TANDEM_NODE_REGISTRATION_TOKEN")
+    token = resolve_registration_token()
     if token:
         pairs.append(("TANDEM_NODE_REGISTRATION_TOKEN", token))
     return pairs

@@ -39,6 +39,7 @@ _KEYRING_ACCESS_TOKEN_KEY = "tandem_access_token"
 _KEYRING_REFRESH_TOKEN_KEY = "tandem_refresh_token"
 _KEYRING_API_KEY_KEY = "tandem_api_key"
 _KEYRING_SERVER_URL_KEY = "tandem_server_url"
+_KEYRING_REGISTRATION_TOKEN_KEY = "tandem_node_registration_token"
 _FALLBACK_CREDS_PATH = Path.home() / ".tandem" / "credentials.json"
 
 
@@ -163,6 +164,33 @@ def set_stored_server_url(server_url: str) -> str:
 def clear_stored_server_url() -> None:
     """Remove the saved server URL, falling back to TANDEM_SERVER_URL/SERVER_URL or the default."""
     _keyring_delete(_KEYRING_SERVER_URL_KEY)
+
+
+# ---------------------------------------------------------------------------
+# Node registration token
+# ---------------------------------------------------------------------------
+# Some servers require a shared secret before they'll let a new machine
+# register as a node (see TANDEM_NODE_REGISTRATION_TOKEN on the server side).
+# We save it the same way we save the server URL, so it survives across
+# terminal sessions instead of needing to be exported by hand every time.
+
+def get_stored_registration_token() -> str | None:
+    """Return the token saved via `tandem settings set-registration-token`, if any."""
+    return _keyring_get(_KEYRING_REGISTRATION_TOKEN_KEY)
+
+
+def set_stored_registration_token(registration_token: str) -> str:
+    """Save a node registration token so `tandem node start` sends it automatically."""
+    normalized = registration_token.strip()
+    if not normalized:
+        raise ValueError("Registration token cannot be empty.")
+    _keyring_set(_KEYRING_REGISTRATION_TOKEN_KEY, normalized)
+    return normalized
+
+
+def clear_stored_registration_token() -> None:
+    """Remove the saved registration token, falling back to TANDEM_NODE_REGISTRATION_TOKEN if set."""
+    _keyring_delete(_KEYRING_REGISTRATION_TOKEN_KEY)
 
 
 # ---------------------------------------------------------------------------
@@ -366,6 +394,7 @@ def clear_auth_session(server_url: str | None = None) -> None:
         _KEYRING_REFRESH_TOKEN_KEY,
         _KEYRING_API_KEY_KEY,
         _KEYRING_SERVER_URL_KEY,
+        _KEYRING_REGISTRATION_TOKEN_KEY,
     ]:
         _keyring_delete(key)
 
