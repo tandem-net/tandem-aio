@@ -30,6 +30,19 @@ from .auth import (
 )
 from .build import AnalysisFailure, build_project, clean_project, inspect_project
 from .manifest import build_manifest
+from .node_service import (
+    active_backend,
+    disable_service,
+    enable_service,
+    get_status,
+    is_registered,
+    node_is_running,
+    register_node_now,
+    resolve_node_server_url,
+    start_node,
+    stop_node,
+    tail_log,
+)
 from .remote import deploy_project, fetch_job_results, start_project
 from .sdk_commands import (
     download_sdk,
@@ -524,6 +537,73 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Path to the Tandem TOML config. Defaults to tandem.toml.",
     )
 
+    subparsers.add_parser(
+        "status",
+        help="Show your login and whether the Tandem node is running.",
+    )
+
+    node_parser = subparsers.add_parser(
+        "node",
+        help="Run and manage the background Tandem node on this machine.",
+    )
+    node_subparsers = node_parser.add_subparsers(dest="node_command", required=True)
+
+    node_start_parser = node_subparsers.add_parser(
+        "start",
+        help="Start the node in the background, registering it the first time.",
+    )
+    node_start_parser.add_argument(
+        "--server-url",
+        default=None,
+        help="Server the node should connect to. Defaults to your saved server URL.",
+    )
+
+    node_subparsers.add_parser(
+        "stop",
+        help="Stop the background node.",
+    )
+
+    node_restart_parser = node_subparsers.add_parser(
+        "restart",
+        help="Stop and start the background node.",
+    )
+    node_restart_parser.add_argument(
+        "--server-url",
+        default=None,
+        help="Server the node should connect to. Defaults to your saved server URL.",
+    )
+
+    node_subparsers.add_parser(
+        "status",
+        help="Show whether the node is running, its id, and how it's running.",
+    )
+
+    node_logs_parser = node_subparsers.add_parser(
+        "logs",
+        help="Print the most recent lines from the node's log.",
+    )
+    node_logs_parser.add_argument(
+        "--lines",
+        type=int,
+        default=40,
+        help="How many lines from the end of the log to show. Defaults to 40.",
+    )
+
+    node_enable_parser = node_subparsers.add_parser(
+        "enable",
+        help="Run the node 24/7 as an OS service (starts on boot, restarts on crash).",
+    )
+    node_enable_parser.add_argument(
+        "--server-url",
+        default=None,
+        help="Server the node should connect to. Defaults to your saved server URL.",
+    )
+
+    node_subparsers.add_parser(
+        "disable",
+        help="Turn off the 24/7 OS service, going back to manual start/stop.",
+    )
+
     return parser
 
 
@@ -791,7 +871,190 @@ def _cmd_sdk_download(args: argparse.Namespace) -> int:
     return 0
 
 
+def _require_node_running() -> None:
+    """The lock: deploy/start only make sense if this machine's node is up to run
+    the work. Set TANDEM_SKIP_NODE_CHECK=1 to bypass (handy in CI)."""
+    if os.environ.get("TANDEM_SKIP_NODE_CHECK"):
+        return
+    if not node_is_running():
+        raise RuntimeError(
+            "The Tandem node isn't running, so there's no worker to run your job.\n"
+            "  Start it now:   tandem node start\n"
+            "  Or run it 24/7: tandem node enable\n"
+            "  Check status:   tandem status\n"
+            "To bypass this check (e.g. in CI), set TANDEM_SKIP_NODE_CHECK=1."
+        )
+
+
+def _backend_label(backend: str) -> str:
+    return {
+        "systemd": "systemd service",
+        "launchd": "launchd service",
+        "daemon": "background process",
+    }.get(backend, backend)
+
+
+def _format_uptime(seconds: int | None) -> str:
+    if seconds is None:
+        return ""
+    minutes, sec = divmod(seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+    days, hours = divmod(hours, 24)
+    parts: list[str] = []
+    if days:
+        parts.append(f"{days}d")
+    if hours:
+        parts.append(f"{hours}h")
+    if minutes:
+        parts.append(f"{minutes}m")
+    if not parts:
+        parts.append(f"{sec}s")
+    return " ".join(parts)
+
+
+def _print_node_status() -> None:
+    status = get_status()
+    if status.running:
+        print(f"{Colors.GREEN}Node: running{Colors.RESET}")
+    else:
+        print(f"{Colors.YELLOW}Node: stopped{Colors.RESET}")
+
+    if status.node_id:
+        print(f"  Node ID:  {status.node_id}")
+    else:
+        print("  Not registered yet -- it registers the first time you start it.")
+
+    if status.server_url:
+        print(f"  Server:   {status.server_url}")
+
+    print(f"  Mode:     {_backend_label(active_backend())}")
+
+    if status.pid:
+        print(f"  PID:      {status.pid}")
+    if status.uptime_seconds is not None:
+        print(f"  Uptime:   {_format_uptime(status.uptime_seconds)}")
+
+    if not status.running:
+        print("  Start it with:  tandem node start")
+
+
+def _cmd_status(_args: argparse.Namespace) -> int:
+    session = load_auth_session()
+    if session is None:
+        print(f"{Colors.YELLOW}Auth: not logged in{Colors.RESET} (run `tandem auth login`)")
+    else:
+        print(f"{Colors.GREEN}Auth: logged in as {session.username}{Colors.RESET}")
+        print(f"  Server:   {session.server_url}")
+
+    print("")
+    _print_node_status()
+    return 0
+
+
+def _register_if_needed(server_url: str) -> int | None:
+    """Register this machine if it hasn't been yet, telling the user how it went.
+    Returns an exit code to bail out with on failure, or None to keep going."""
+    if is_registered():
+        return None
+    print(f"Registering this machine as a Tandem node on {server_url}...")
+    result = register_node_now(server_url)
+    if not result.ok:
+        print(f"{Colors.RED}Registration failed: {result.message}{Colors.RESET}", file=sys.stderr)
+        return 1
+    print(f"{Colors.GREEN}Registered as {result.node_id}.{Colors.RESET}")
+    return None
+
+
+def _cmd_node_start(args: argparse.Namespace) -> int:
+    server_url = resolve_node_server_url(getattr(args, "server_url", None))
+    if node_is_running():
+        print("The Tandem node is already running.")
+        return 0
+
+    bail = _register_if_needed(server_url)
+    if bail is not None:
+        return bail
+
+    start_node(server_url)
+    backend = active_backend()
+    if backend in ("systemd", "launchd"):
+        print(f"{Colors.GREEN}Tandem node started as a {_backend_label(backend)}.{Colors.RESET}")
+    else:
+        print(f"{Colors.GREEN}Tandem node started in the background.{Colors.RESET}")
+        print("It keeps running after you close this terminal.")
+    print("Check on it any time with:  tandem status")
+    return 0
+
+
+def _cmd_node_stop(_args: argparse.Namespace) -> int:
+    stopped = stop_node()
+    if stopped:
+        print("Tandem node stopped.")
+    else:
+        print("The Tandem node wasn't running.")
+
+    if active_backend() in ("systemd", "launchd"):
+        print("Note: the OS service is still enabled, so it starts again on reboot.")
+        print("Run `tandem node disable` to turn that off.")
+    return 0
+
+
+def _cmd_node_restart(args: argparse.Namespace) -> int:
+    server_url = resolve_node_server_url(getattr(args, "server_url", None))
+    stop_node()
+
+    bail = _register_if_needed(server_url)
+    if bail is not None:
+        return bail
+
+    start_node(server_url)
+    print(f"{Colors.GREEN}Tandem node restarted.{Colors.RESET}")
+    return 0
+
+
+def _cmd_node_status(_args: argparse.Namespace) -> int:
+    _print_node_status()
+    return 0
+
+
+def _cmd_node_logs(args: argparse.Namespace) -> int:
+    text = tail_log(getattr(args, "lines", 40))
+    if not text:
+        print("No node log yet. Start the node with `tandem node start`.")
+        return 0
+    print(text)
+    return 0
+
+
+def _cmd_node_enable(args: argparse.Namespace) -> int:
+    server_url = resolve_node_server_url(getattr(args, "server_url", None))
+
+    bail = _register_if_needed(server_url)
+    if bail is not None:
+        return bail
+
+    notes = enable_service(server_url)
+    print(
+        f"{Colors.GREEN}Tandem node is now running 24/7 as a "
+        f"{_backend_label(active_backend())}.{Colors.RESET}"
+    )
+    for note in notes:
+        print(f"  {note}")
+    return 0
+
+
+def _cmd_node_disable(_args: argparse.Namespace) -> int:
+    kind = disable_service()
+    if kind == "none":
+        print("No OS service was enabled.")
+    else:
+        print("Turned off the 24/7 service. The node is back to manual start/stop.")
+        print("Run `tandem node start` to run it in the background for this session.")
+    return 0
+
+
 def _cmd_deploy(args: argparse.Namespace) -> int:
+    _require_node_running()
     config = load_project_config(args.config_path)
     if config.build_start:
         import shutil
@@ -832,6 +1095,7 @@ def _cmd_deploy(args: argparse.Namespace) -> int:
 
 
 def _cmd_start(args: argparse.Namespace) -> int:
+    _require_node_running()
     config = load_project_config(args.config_path)
     if config.build_start:
         import subprocess
@@ -951,6 +1215,24 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _cmd_start(args)
         if args.command == "clean":
             return _cmd_clean(args)
+        if args.command == "status":
+            return _cmd_status(args)
+        if args.command == "node":
+            if args.node_command == "start":
+                return _cmd_node_start(args)
+            if args.node_command == "stop":
+                return _cmd_node_stop(args)
+            if args.node_command == "restart":
+                return _cmd_node_restart(args)
+            if args.node_command == "status":
+                return _cmd_node_status(args)
+            if args.node_command == "logs":
+                return _cmd_node_logs(args)
+            if args.node_command == "enable":
+                return _cmd_node_enable(args)
+            if args.node_command == "disable":
+                return _cmd_node_disable(args)
+            parser.error(f"Unknown node command: {args.node_command}")
     except Exception as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
