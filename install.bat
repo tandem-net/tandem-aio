@@ -73,7 +73,25 @@ if not exist "%BIN_DIR%" mkdir "%BIN_DIR%"
 echo.
 echo Tandem CLI installed.
 
-REM 5. Install the compute node.
+REM 5. If your server needs a node registration token, save it now so `tandem
+REM node start` doesn't need it exported by hand every session. We check the
+REM environment first, then fall back to this repo's own .env file, since
+REM that's where a local dev server's token normally lives.
+set "REGISTRATION_TOKEN=%TANDEM_NODE_REGISTRATION_TOKEN%"
+set "TOKEN_SOURCE=the environment"
+if not defined REGISTRATION_TOKEN if exist "%REPO_ROOT%\.env" (
+  for /f "tokens=1,* delims==" %%A in ('findstr /b "TANDEM_NODE_REGISTRATION_TOKEN=" "%REPO_ROOT%\.env"') do set "REGISTRATION_TOKEN=%%B"
+  set "TOKEN_SOURCE=%REPO_ROOT%\.env"
+)
+
+if defined REGISTRATION_TOKEN (
+  call "%BIN_DIR%\tandem.bat" settings set-registration-token "%REGISTRATION_TOKEN%" >nul
+  echo Saved a node registration token from %TOKEN_SOURCE%.
+  echo tandem node start will use it automatically -- no export needed.
+  echo.
+)
+
+REM 6. Install the compute node.
 if "%TANDEM_SKIP_NODE%"=="1" (
   echo Skipping the node install because TANDEM_SKIP_NODE=1.
   goto path_check
@@ -123,7 +141,7 @@ goto path_check
 echo Tandem node installed at %NODE_DEST%
 
 :path_check
-REM 6. Make sure the bin dir is on PATH for future terminals.
+REM 7. Make sure the bin dir is on PATH for future terminals.
 echo.
 echo ";%PATH%;" | find /i ";%BIN_DIR%;" >nul
 if errorlevel 1 (

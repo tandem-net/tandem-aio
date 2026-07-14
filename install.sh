@@ -84,7 +84,25 @@ echo "Tandem CLI installed."
 echo "Linked: $BIN_DIR/tandem -> $VENV_DIR/bin/tandem"
 echo ""
 
-# 6. Install the compute node. This is the Rust program that actually runs your
+# 6. If your server needs a node registration token, save it now so `tandem node
+# start` doesn't need it exported by hand every session. We check the
+# environment first, then fall back to this repo's own .env file, since that's
+# where a local dev server's token normally lives.
+REGISTRATION_TOKEN="${TANDEM_NODE_REGISTRATION_TOKEN:-}"
+TOKEN_SOURCE="the environment"
+if [ -z "$REGISTRATION_TOKEN" ] && [ -f "$REPO_ROOT/.env" ]; then
+  REGISTRATION_TOKEN="$(grep -m1 '^TANDEM_NODE_REGISTRATION_TOKEN=' "$REPO_ROOT/.env" | cut -d'=' -f2-)"
+  TOKEN_SOURCE="$REPO_ROOT/.env"
+fi
+
+if [ -n "$REGISTRATION_TOKEN" ]; then
+  "$BIN_DIR/tandem" settings set-registration-token "$REGISTRATION_TOKEN" >/dev/null
+  echo "Saved a node registration token from $TOKEN_SOURCE."
+  echo "tandem node start will use it automatically -- no export needed."
+  echo ""
+fi
+
+# 7. Install the compute node. This is the Rust program that actually runs your
 # tasks; the CLI starts and stops it for you, but it has to exist on disk first.
 # We try hard to make this work no matter what you have installed, and when we
 # can't, we point you at exactly what to install rather than failing silently.
