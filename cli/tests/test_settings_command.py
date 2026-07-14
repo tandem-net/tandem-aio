@@ -9,8 +9,11 @@ from unittest.mock import patch
 
 from tandem_cli import commands, remote
 from tandem_cli.auth import (
+    clear_stored_registration_token,
     clear_stored_server_url,
+    get_stored_registration_token,
     get_stored_server_url,
+    set_stored_registration_token,
     set_stored_server_url,
 )
 
@@ -59,10 +62,36 @@ class StoredServerUrlTests(unittest.TestCase):
             self.assertIsNone(get_stored_server_url())
 
 
+class StoredRegistrationTokenTests(unittest.TestCase):
+    def test_set_then_get_round_trips(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _use_isolated_credentials_file(self, tmpdir)
+
+            normalized = set_stored_registration_token("  meow-secret  ")
+            self.assertEqual(normalized, "meow-secret")
+            self.assertEqual(get_stored_registration_token(), "meow-secret")
+
+    def test_rejects_an_empty_token(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _use_isolated_credentials_file(self, tmpdir)
+
+            with self.assertRaises(ValueError):
+                set_stored_registration_token("   ")
+
+    def test_clear_removes_the_saved_token(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _use_isolated_credentials_file(self, tmpdir)
+
+            set_stored_registration_token("meow-secret")
+            clear_stored_registration_token()
+            self.assertIsNone(get_stored_registration_token())
+
+
 class SettingsCommandTests(unittest.TestCase):
     def _run_in_empty_project_dir(self, argv: list[str]) -> tuple[int, str, str]:
         """Run commands.main() from a tempdir with no .env file, so
-        TANDEM_SERVER_URL/SERVER_URL can't sneak in from the repo's own .env.
+        TANDEM_SERVER_URL/SERVER_URL/TANDEM_NODE_REGISTRATION_TOKEN can't sneak
+        in from the repo's own .env.
 
         Restores the cwd before the tempdir is removed -- a test method may
         call this more than once, and addCleanup alone wouldn't restore the
@@ -74,8 +103,9 @@ class SettingsCommandTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             os.chdir(tmpdir)
             try:
+                excluded_keys = ("TANDEM_SERVER_URL", "SERVER_URL", "TANDEM_NODE_REGISTRATION_TOKEN")
                 env_without_server_url = {
-                    k: v for k, v in os.environ.items() if k not in ("TANDEM_SERVER_URL", "SERVER_URL")
+                    k: v for k, v in os.environ.items() if k not in excluded_keys
                 }
                 with patch.dict(os.environ, env_without_server_url, clear=True):
                     with patch("sys.stdout", stdout), patch("sys.stderr", stderr):
@@ -134,6 +164,56 @@ class SettingsCommandTests(unittest.TestCase):
         self.assertEqual(show_exit, 0)
         self.assertNotIn("http://example.com", show_output)
         self.assertIn("built-in default", show_output)
+
+    def test_show_with_no_registration_token_explains_how_to_set_one(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _use_isolated_credentials_file(self, tmpdir)
+            exit_code, output, _ = self._run_in_empty_project_dir(["settings", "show"])
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("No node registration token saved", output)
+        self.assertIn("tandem settings set-registration-token", output)
+
+    def test_set_then_show_reports_the_saved_registration_token_masked(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _use_isolated_credentials_file(self, tmpdir)
+
+            set_exit, set_output, _ = self._run_in_empty_project_dir(
+                ["settings", "set-registration-token", "meow-secret-value"]
+            )
+            show_exit, show_output, _ = self._run_in_empty_project_dir(["settings", "show"])
+
+        self.assertEqual(set_exit, 0)
+        self.assertEqual(show_exit, 0)
+        # The raw token never gets printed back out, only a masked form.
+        self.assertNotIn("meow-secret-value", set_output)
+        self.assertNotIn("meow-secret-value", show_output)
+        self.assertIn("saved setting", show_output)
+
+    def test_set_registration_token_rejects_empty(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _use_isolated_credentials_file(self, tmpdir)
+            exit_code, _, stderr_output = self._run_in_empty_project_dir(
+                ["settings", "set-registration-token", "   "]
+            )
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("cannot be empty", stderr_output)
+
+    def test_reset_registration_token_reverts_to_unset(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _use_isolated_credentials_file(self, tmpdir)
+
+            self._run_in_empty_project_dir(["settings", "set-registration-token", "meow-secret"])
+            reset_exit, reset_output, _ = self._run_in_empty_project_dir(
+                ["settings", "reset-registration-token"]
+            )
+            show_exit, show_output, _ = self._run_in_empty_project_dir(["settings", "show"])
+
+        self.assertEqual(reset_exit, 0)
+        self.assertIn("Cleared", reset_output)
+        self.assertEqual(show_exit, 0)
+        self.assertIn("No node registration token saved", show_output)
 
 
 class RemoteResolverHonorsStoredUrlTests(unittest.TestCase):

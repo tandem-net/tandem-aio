@@ -112,6 +112,44 @@ class NodeIdentityTests(unittest.TestCase):
             self.assertIn("tandem-node", result.message)
 
 
+class RegistrationTokenResolutionTests(unittest.TestCase):
+    """A saved `tandem settings set-registration-token` setting should mean you
+    never have to export TANDEM_NODE_REGISTRATION_TOKEN by hand again -- these
+    pin down the fallback order and that it actually reaches the node process."""
+
+    def test_no_token_anywhere_resolves_to_empty(self) -> None:
+        with patch.object(node_service, "get_stored_registration_token", return_value=None):
+            with patch.dict(os.environ, {}, clear=False):
+                os.environ.pop("TANDEM_NODE_REGISTRATION_TOKEN", None)
+                self.assertEqual(node_service.resolve_registration_token(), "")
+
+    def test_env_var_is_used_when_nothing_is_saved(self) -> None:
+        with patch.object(node_service, "get_stored_registration_token", return_value=None):
+            with patch.dict(os.environ, {"TANDEM_NODE_REGISTRATION_TOKEN": "from-env"}):
+                self.assertEqual(node_service.resolve_registration_token(), "from-env")
+
+    def test_saved_setting_wins_over_the_env_var(self) -> None:
+        with patch.object(node_service, "get_stored_registration_token", return_value="from-settings"):
+            with patch.dict(os.environ, {"TANDEM_NODE_REGISTRATION_TOKEN": "from-env"}):
+                self.assertEqual(node_service.resolve_registration_token(), "from-settings")
+
+    def test_build_node_env_carries_the_resolved_token(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            _isolate_node_home(self, tmp)
+            with patch.object(node_service, "get_stored_registration_token", return_value="from-settings"):
+                env = node_service.build_node_env("http://server")
+            self.assertEqual(env["TANDEM_NODE_REGISTRATION_TOKEN"], "from-settings")
+
+    def test_build_node_env_omits_the_key_when_no_token_is_set(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            _isolate_node_home(self, tmp)
+            with patch.object(node_service, "get_stored_registration_token", return_value=None):
+                with patch.dict(os.environ, {}, clear=False):
+                    os.environ.pop("TANDEM_NODE_REGISTRATION_TOKEN", None)
+                    env = node_service.build_node_env("http://server")
+            self.assertNotIn("TANDEM_NODE_REGISTRATION_TOKEN", env)
+
+
 class NodeProcessTests(unittest.TestCase):
     def test_pid_file_round_trips(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
