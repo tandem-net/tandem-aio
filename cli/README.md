@@ -165,7 +165,6 @@ From the repo root:
 
 ```bash
 export REDIS_URL=redis://127.0.0.1:6379/0
-export TANDEM_NODE_REGISTRATION_TOKEN=meow-secret
 python server/run.py
 ```
 
@@ -173,11 +172,16 @@ python server/run.py
 
 ```powershell
 $env:REDIS_URL = "redis://127.0.0.1:6379/0"
-$env:TANDEM_NODE_REGISTRATION_TOKEN = "meow-secret"
 py server/run.py
 ```
 
 The server listens on `http://127.0.0.1:6767` by default.
+
+You don't need to set a node registration token -- if `TANDEM_NODE_REGISTRATION_TOKEN`
+isn't set, the server generates a random one on this first run, saves it to
+`server/keys/node_registration_token.txt` (reused on every restart from then on),
+and prints it. Only set the env var yourself if you want a fixed, predictable
+value instead (see `.env.example`).
 
 ### 3. Install the CLI and node
 
@@ -217,12 +221,14 @@ tandem status
 
 If your server enforces a registration token, save it once and every future
 `tandem node start` sends it automatically -- no more exporting it by hand each
-session. (`./install.sh` / `install.bat` already do this for you when the token
-is sitting in this repo's `.env`, so most people following this guide won't
-need to run it manually.)
+session. `./install.sh` / `install.bat` already do this for you -- they check
+this repo's `.env`, and then the token the server auto-generated at
+`server/keys/node_registration_token.txt` -- so if you started the server in
+step 2 before installing the CLI, most people following this guide won't need
+to run this manually:
 
 ```bash
-tandem settings set-registration-token meow-secret
+tandem settings set-registration-token <token>
 tandem node start
 ```
 
