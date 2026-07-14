@@ -215,8 +215,20 @@ tandem node start
 tandem status
 ```
 
-If your server enforces a registration token, set it before starting so the node
-can register:
+If your server enforces a registration token, save it once and every future
+`tandem node start` sends it automatically -- no more exporting it by hand each
+session. (`./install.sh` / `install.bat` already do this for you when the token
+is sitting in this repo's `.env`, so most people following this guide won't
+need to run it manually.)
+
+```bash
+tandem settings set-registration-token meow-secret
+tandem node start
+```
+
+`tandem settings show` reports which token (if any) is currently in effect and
+where it came from. `TANDEM_NODE_REGISTRATION_TOKEN` still works too, if you'd
+rather export it as a one-off (handy in CI):
 
 ```bash
 export TANDEM_NODE_REGISTRATION_TOKEN=meow-secret   # PowerShell: $env:TANDEM_NODE_REGISTRATION_TOKEN = "meow-secret"
