@@ -81,3 +81,6 @@ dist/
 
 #Get rid of node_key temp
 **/*.pem
+
+# auto-generated node registration secret (see server/app/__init__.py)
+server/keys/node_registration_token.txt

@@ -1,5 +1,6 @@
 import os
 import pathlib
+import secrets
 
 from dotenv import load_dotenv
 from flask import Flask
@@ -34,12 +35,46 @@ def _apply_runtime_schema_migrations() -> None:
         )
 
 
+def _resolve_node_registration_token(server_dir: pathlib.Path) -> str:
+    """The bearer token a node must send to POST /nodes/register.
+
+    An explicit TANDEM_NODE_REGISTRATION_TOKEN always wins. Otherwise we reuse
+    (or generate once) a random token on disk -- the same idea as the JWT
+    keypair in blueprints/auth.py -- so the server is never silently open to
+    registration and nobody has to invent and copy a secret by hand."""
+    env_token = os.environ.get("TANDEM_NODE_REGISTRATION_TOKEN")
+    if env_token:
+        return env_token
+
+    token_path = server_dir / "keys" / "node_registration_token.txt"
+    if token_path.exists():
+        return token_path.read_text(encoding="utf-8").strip()
+
+    token = secrets.token_urlsafe(32)
+    token_path.parent.mkdir(parents=True, exist_ok=True)
+    token_path.write_text(token, encoding="utf-8")
+    token_path.chmod(0o600)
+
+    print("")
+    print("=" * 72)
+    print("No TANDEM_NODE_REGISTRATION_TOKEN set -- generated a random one instead.")
+    print(f"Saved to {token_path} (reused on every restart from here on).")
+    print("")
+    print("On any machine you want to register as a node, run:")
+    print(f"  tandem settings set-registration-token {token}")
+    print("=" * 72)
+    print("")
+
+    return token
+
+
 def create_app():
     app = Flask(__name__)
+    server_dir = pathlib.Path(__file__).resolve().parents[1]
 
     database_uri = os.environ.get("DATABASE_URL")
     if not database_uri:
-        default_db_path = pathlib.Path(__file__).resolve().parents[1] / "dev.db"
+        default_db_path = server_dir / "dev.db"
         database_uri = f"sqlite:///{default_db_path}"
 
     lower = database_uri.lower()
@@ -65,9 +100,7 @@ def create_app():
     if task_storage_root:
         app.config["TASK_STORAGE_ROOT"] = task_storage_root
 
-    node_registration_token = os.environ.get("TANDEM_NODE_REGISTRATION_TOKEN")
-    if node_registration_token:
-        app.config["NODE_REGISTRATION_TOKEN"] = node_registration_token
+    app.config["NODE_REGISTRATION_TOKEN"] = _resolve_node_registration_token(server_dir)
 
     redis_client.init_app(app)
 
