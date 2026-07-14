@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import secrets
 import sys
 import time
 from pathlib import Path
@@ -44,6 +45,7 @@ from .node_service import (
     tail_log,
 )
 from .remote import deploy_project, fetch_job_results, start_project
+from .uninstall import perform_uninstall
 from .sdk_commands import (
     download_sdk,
     fetch_sdk_registry,
@@ -604,6 +606,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Turn off the 24/7 OS service, going back to manual start/stop.",
     )
 
+    subparsers.add_parser(
+        "uninstall",
+        help="Completely remove Tandem from this machine (asks you to confirm a code).",
+    )
+
     return parser
 
 
@@ -1053,6 +1060,42 @@ def _cmd_node_disable(_args: argparse.Namespace) -> int:
     return 0
 
 
+def _generate_confirmation_code() -> str:
+    """A fresh random 6-digit code the user has to type back to confirm uninstall.
+    It's shown on screen each run, so it can't be guessed or piped in ahead of time."""
+    return f"{secrets.randbelow(900000) + 100000}"
+
+
+def _cmd_uninstall(_args: argparse.Namespace) -> int:
+    print(f"{Colors.BOLD}This permanently removes Tandem from this machine.{Colors.RESET}")
+    print("  - stops the node and any 24/7 service")
+    print("  - clears your saved login")
+    print("  - deletes ~/.tandem (the private environment, node binary, and node state)")
+    print("  - removes the `tandem` command")
+    print("")
+
+    code = _generate_confirmation_code()
+    print(f"To confirm, type this 6-digit code back:  {Colors.BOLD}{code}{Colors.RESET}")
+    try:
+        entered = input("Code: ").strip()
+    except EOFError:
+        print("No input received; nothing was removed.", file=sys.stderr)
+        return 1
+
+    if entered != code:
+        print(f"{Colors.YELLOW}That code didn't match. Nothing was removed.{Colors.RESET}")
+        return 1
+
+    print("")
+    for step in perform_uninstall():
+        print(f"  - {step}")
+
+    print("")
+    print(f"{Colors.GREEN}Tandem has been removed.{Colors.RESET}")
+    print("Re-run the installer any time to set it back up.")
+    return 0
+
+
 def _cmd_deploy(args: argparse.Namespace) -> int:
     _require_node_running()
     config = load_project_config(args.config_path)
@@ -1233,6 +1276,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             if args.node_command == "disable":
                 return _cmd_node_disable(args)
             parser.error(f"Unknown node command: {args.node_command}")
+        if args.command == "uninstall":
+            return _cmd_uninstall(args)
     except Exception as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
