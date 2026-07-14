@@ -80,6 +80,11 @@ tandem node enable     # run 24/7 as an OS service (systemd/launchd)
 tandem node disable    # turn that off, back to manual start/stop
 ```
 
+## Setting up a node on another machine
+
+For the full per-platform command list (including the Windows `install.bat`), see
+[docs/execution-setup.md](docs/execution-setup.md).
+
 ## Downloadable node binaries
 
 You can also install the node from a prebuilt package instead of building it:
@@ -88,5 +93,7 @@ You can also install the node from a prebuilt package instead of building it:
 - **macOS** — a `.dmg`: open it and double-click `Install.command`
 - **Windows** — a `.exe`: drop `tandem-node.exe` somewhere on your PATH
 
-See [node/packaging/README.md](node/packaging/README.md) for how these are built
-(a `git push` of a `v*` tag builds all three on CI and attaches them to a release).
+These aren't shipped in the repo — build them with the packaging scripts (or let
+CI build them). See [node/packaging/README.md](node/packaging/README.md) and the
+"Building the downloadable packages" section of
+[docs/execution-setup.md](docs/execution-setup.md).

@@ -8,9 +8,16 @@ start` jobs.
 Replace `<SERVER_URL>` with the Tandem server you're connecting to (for example
 `https://tandem.wnusair.org`).
 
-You need **Python 3.10+** for the CLI on every platform. Building the node from
-source additionally needs **Rust** (the installer tells you how to get it); or you
-can install the node from a prebuilt package and skip Rust entirely.
+You need **Python 3.10+** for the CLI on every platform. The node is a compiled
+binary -- the installer builds it from source if you have **Rust**, otherwise you
+point it at a prebuilt binary (see
+[Building the downloadable packages](#building-the-downloadable-packages-deb--dmg--exe)
+at the bottom).
+
+> **Note:** the `.deb`, `.dmg`, and `.exe` are **not** checked into the repo --
+> they're compiled artifacts (~20 MB each), so you either let `install.sh` /
+> `install.bat` build the node for you, or you build a package yourself with the
+> commands at the bottom, or you download one from a release.
 
 ---
 
@@ -30,8 +37,8 @@ tandem node enable                        # run 24/7 (starts on boot, restarts o
 tandem status                             # confirm: Node: running
 ```
 
-Prefer a prebuilt package over building from source? Install the `.deb`, then run
-the installer for just the CLI:
+Prefer a prebuilt package over building from source? Build (or download) the
+`.deb`, install it, then run the installer for just the CLI:
 
 ```bash
 sudo dpkg -i tandem-node_<version>_amd64.deb
@@ -60,26 +67,29 @@ Prefer the prebuilt `.dmg`? Open it, double-click **Install.command**, then run
 
 ---
 
-## Windows (PowerShell)
+## Windows
 
-```powershell
+Open **Command Prompt** and run:
+
+```bat
 git clone <REPO_URL> tandem-aio
 cd tandem-aio
-py -m pip install .\cli                   # installs the CLI
-
-# Install the node binary: either build it (needs Rust)...
-cargo build --release --manifest-path node\Cargo.toml
-copy node\target\release\tandem-node.exe $HOME\.tandem\bin\tandem-node.exe
-# ...or download tandem-node.exe from a release and put it in %USERPROFILE%\.tandem\bin\
+install.bat
 
 tandem settings set-server-url <SERVER_URL>
-tandem auth register                      # or: tandem auth login
-tandem node start                         # runs in the background for this session
+tandem auth register
+tandem node start
 tandem status
 ```
 
-Windows has no systemd/launchd, so `tandem node enable` isn't available there. Use
-`tandem node start` to run the node in the background. To have it start
+`install.bat` is the Windows twin of `install.sh`: it sets up a private Python
+environment, puts a `tandem` command on your PATH, and installs the node
+(building it if you have Rust, otherwise telling you how to drop in a prebuilt
+`tandem-node.exe`). If it says the bin folder isn't on your PATH, follow its
+instructions and open a new terminal.
+
+Windows has no systemd/launchd, so `tandem node enable` isn't available there --
+use `tandem node start` to run the node in the background. To have it start
 automatically at login, add a Task Scheduler task that runs
 `%USERPROFILE%\.tandem\bin\tandem-node.exe` at logon.
 
@@ -101,3 +111,46 @@ tandem node disable    # turn 24/7 off
 The node must be running before `tandem deploy` or `tandem start` will do
 anything -- that's intentional. If you ever need to bypass that check (say in a
 CI script), set `TANDEM_SKIP_NODE_CHECK=1`.
+
+---
+
+## Building the downloadable packages (.deb / .dmg / .exe)
+
+Yes -- these are built on demand, not shipped in the repo. Each one is built on
+its own OS (that's the reliable way; cross-building a `.dmg` or `.exe` from Linux
+is a headache). Build outputs land in `node/packaging/dist/`.
+
+**Linux `.deb`** -- on any machine with `dpkg-deb`:
+
+```bash
+bash node/packaging/build-deb.sh
+# -> node/packaging/dist/tandem-node_<version>_amd64.deb
+sudo dpkg -i node/packaging/dist/tandem-node_*.deb      # to install it locally
+```
+
+**macOS `.dmg`** -- on a Mac:
+
+```bash
+bash node/packaging/build-dmg.sh
+# -> node/packaging/dist/tandem-node-macos-<arch>.dmg
+```
+
+**Windows `.exe`** -- on Windows with Rust (the binary itself is the deliverable):
+
+```bat
+cargo build --release --manifest-path node\Cargo.toml
+REM ship node\target\release\tandem-node.exe
+```
+
+**All three at once (CI)** -- you can't make a `.dmg` or `.exe` on Linux, so the
+real cross-platform build lives in
+[`.github/workflows/release.yml`](../.github/workflows/release.yml). Push a version
+tag and it builds every package on its own runner and attaches them to a GitHub
+Release:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+More detail in [node/packaging/README.md](../node/packaging/README.md).

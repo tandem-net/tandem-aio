@@ -24,16 +24,22 @@ so your local edits take effect immediately:
 python -m pip install -e ./cli
 ```
 
-### Windows (PowerShell)
+### Windows
 
-`install.sh` is Linux/macOS only for now. On Windows, install the console
-entry point directly:
+`install.sh` is the Linux/macOS installer; on Windows use its twin, `install.bat`.
+From a Command Prompt in the repo root:
+
+```bat
+install.bat
+```
+
+It sets up a private Python environment, puts a `tandem` command on your PATH, and
+installs the node (building it if you have Rust). To install just the CLI in
+editable mode for development instead:
 
 ```powershell
 py -m pip install -e .\cli
 ```
-
-This installs a `tandem.exe` launcher.
 
 Then verify it:
 
@@ -176,16 +182,17 @@ From the repo root:
 This installs the `tandem` command and builds/installs the node binary. (If you
 only want the CLI in editable mode for development: `python -m pip install -e ./cli`.)
 
-#### Windows (PowerShell)
+#### Windows
 
-```powershell
-py -m pip install .\cli
+From a Command Prompt in the repo root:
+
+```bat
+install.bat
 ```
 
-On Windows, install the node binary separately: build it with
-`cargo build --release --manifest-path node/Cargo.toml` and put
-`node\target\release\tandem-node.exe` on your PATH, or download the `.exe` from a
-release.
+Like `install.sh`, this installs the `tandem` command and the node binary
+(building it with Cargo if Rust is present, otherwise telling you how to drop in a
+prebuilt `tandem-node.exe`).
 
 ### 4. Start your node
 
