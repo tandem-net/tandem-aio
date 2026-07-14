@@ -71,10 +71,25 @@ tandem settings reset-server-url
 tandem sdk list
 tandem sdk install [name]
 tandem sdk download [name] --output <dir>
+tandem status
+tandem node start
+tandem node stop
+tandem node restart
+tandem node status
+tandem node logs [--lines N]
+tandem node enable
+tandem node disable
 tandem deploy [config_path]
 tandem start [config_path]
 tandem clean [config_path]
 ```
+
+`tandem status` shows whether you're logged in and whether your node is running.
+The `tandem node` commands run the compute node in the background: `start`
+registers it the first time and launches it, `enable` upgrades that to an OS
+service that runs 24/7 (starts on boot, restarts on crash), and `disable` turns
+that back off. `deploy` and `start` refuse to run unless the node is up -- set
+`TANDEM_SKIP_NODE_CHECK=1` to bypass that in CI.
 
 `tandem settings set-server-url <url>` saves a server URL so you don't need
 `--server-url` on every command -- it applies across the board (auth, sdk,
@@ -148,56 +163,54 @@ py server/run.py
 
 The server listens on `http://127.0.0.1:6767` by default.
 
-### 3. Start a node
-
-From the repo root, in another terminal:
-
-#### Linux / macOS
-
-```bash
-export TANDEM_SERVER_URL=http://127.0.0.1:6767
-export TANDEM_NODE_REGISTRATION_TOKEN=meow-secret
-cargo run --manifest-path node/Cargo.toml
-```
-
-#### Windows (PowerShell)
-
-```powershell
-$env:TANDEM_SERVER_URL = "http://127.0.0.1:6767"
-$env:TANDEM_NODE_REGISTRATION_TOKEN = "meow-secret"
-cargo run --manifest-path node/Cargo.toml
-```
-
-If you actually want the big startup bandwidth benchmark, opt into it:
-
-#### Linux / macOS
-
-```bash
-export TANDEM_NODE_BENCHMARK_STARTUP=1
-```
-
-#### Windows (PowerShell)
-
-```powershell
-$env:TANDEM_NODE_BENCHMARK_STARTUP = "1"
-```
-
-Otherwise the node starts leaner and just registers itself as WASM-capable.
-
-### 4. Install the CLI command
+### 3. Install the CLI and node
 
 From the repo root:
 
 #### Linux / macOS
 
 ```bash
-python -m pip install -e ./cli
+./install.sh
 ```
+
+This installs the `tandem` command and builds/installs the node binary. (If you
+only want the CLI in editable mode for development: `python -m pip install -e ./cli`.)
 
 #### Windows (PowerShell)
 
 ```powershell
-py -m pip install -e .\cli
+py -m pip install .\cli
+```
+
+On Windows, install the node binary separately: build it with
+`cargo build --release --manifest-path node/Cargo.toml` and put
+`node\target\release\tandem-node.exe` on your PATH, or download the `.exe` from a
+release.
+
+### 4. Start your node
+
+Point the CLI at your server and start the node. It registers itself the first
+time and keeps running in the background:
+
+```bash
+tandem settings set-server-url http://127.0.0.1:6767
+tandem node start
+tandem status
+```
+
+If your server enforces a registration token, set it before starting so the node
+can register:
+
+```bash
+export TANDEM_NODE_REGISTRATION_TOKEN=meow-secret   # PowerShell: $env:TANDEM_NODE_REGISTRATION_TOKEN = "meow-secret"
+tandem node start
+```
+
+To run the node 24/7 (start on boot, restart on crash) instead of just for this
+session:
+
+```bash
+tandem node enable
 ```
 
 ### 5. Create a user and store credentials locally
