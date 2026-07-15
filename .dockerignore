@@ -1,0 +1,17 @@
+# Keep the Docker build context small. We COPY the two release binaries the
+# node and driver need, so those stay; everything heavy or irrelevant is cut.
+**/target/debug
+**/target/release/deps
+**/target/release/build
+**/target/release/.fingerprint
+**/target/release/incremental
+**/target/wasm32-wasip1
+**/target/wasm32-wasip2
+venv/
+.git/
+**/__pycache__/
+**/*.pyc
+.claude/
+server/dev.db
+server/runtime/
+server/keys/

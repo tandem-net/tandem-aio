@@ -1,0 +1,64 @@
+# Full Tandem stack for an end-to-end test: redis + the control-plane server +
+# two compute nodes + a "driver" that plays a developer building and running a
+# task. Run it with docker/build.sh (which builds the release binaries first).
+#
+# The build context is the repo root (..), since the images copy in server code,
+# the CLI, the SDK, and the two release binaries.
+
+services:
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  server:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.server
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: sqlite:////srv/server/dev.db
+      TANDEM_NODE_REGISTRATION_TOKEN: tandem-dev-token
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:6767/')"]
+      interval: 2s
+      timeout: 3s
+      retries: 40
+
+  node1:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.node
+    environment:
+      TANDEM_SERVER_URL: http://server:6767
+      TANDEM_NODE_REGISTRATION_TOKEN: tandem-dev-token
+    depends_on:
+      server:
+        condition: service_healthy
+
+  node2:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.node
+    environment:
+      TANDEM_SERVER_URL: http://server:6767
+      TANDEM_NODE_REGISTRATION_TOKEN: tandem-dev-token
+    depends_on:
+      server:
+        condition: service_healthy
+
+  driver:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.driver
+    environment:
+      TANDEM_SERVER_URL: http://server:6767
+    depends_on:
+      server:
+        condition: service_healthy

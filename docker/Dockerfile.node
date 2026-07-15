@@ -1,0 +1,16 @@
+# A Tandem compute node. We copy in the release binary that was built on the
+# host (see docker/build.sh), on an Ubuntu base so its glibc matches.
+FROM ubuntu:24.04
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY node/target/release/tandem-node /usr/local/bin/tandem-node
+
+# The node writes its identity (key + state) into the working directory.
+WORKDIR /var/lib/tandem-node
+
+# TANDEM_SERVER_URL and TANDEM_NODE_REGISTRATION_TOKEN come from compose. The
+# node registers itself on first start and then heartbeats + pulls work.
+CMD ["tandem-node"]
