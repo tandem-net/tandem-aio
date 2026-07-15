@@ -3,22 +3,42 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any
 
 
-def _resolve_tool(env_var: str, default_name: str) -> str:
-    """Find a helper binary: an explicit env override wins, else look on PATH.
+def _resolve_compile_bin() -> str:
+    """Find the `tandem-compile` engine binary.
 
-    We fall back to the bare name so the actual `subprocess` call is what raises
-    a clear "not found" error, rather than failing here in a confusing way.
+    An explicit env override wins; otherwise we look where install.sh puts it
+    (next to the node binary), then fall back to PATH and finally the bare name
+    so the subprocess call raises a clear "not found" error.
     """
-    override = os.environ.get(env_var)
+    override = os.environ.get("TANDEM_COMPILE_BIN")
     if override:
         return override
-    found = shutil.which(default_name)
-    return found or default_name
+    home_bin = Path.home() / ".tandem" / "bin" / "tandem-compile"
+    if home_bin.exists():
+        return str(home_bin)
+    return shutil.which("tandem-compile") or "tandem-compile"
+
+
+def _resolve_componentize_py() -> str:
+    """Find the `componentize-py` toolchain.
+
+    It's a dependency of the CLI, so it installs into the same environment as the
+    CLI. That means the most reliable place to look is right next to the Python
+    that's running us, before falling back to PATH.
+    """
+    override = os.environ.get("TANDEM_COMPONENTIZE_PY")
+    if override:
+        return override
+    sibling = Path(sys.executable).parent / "componentize-py"
+    if sibling.exists():
+        return str(sibling)
+    return shutil.which("componentize-py") or "componentize-py"
 
 
 def _resolve_wit_dir() -> str:
@@ -61,8 +81,8 @@ def build_wasm(
     binary, which drives componentize-py). This function just resolves the tools,
     shells out, and hands back the component bytes.
     """
-    compile_bin = _resolve_tool("TANDEM_COMPILE_BIN", "tandem-compile")
-    componentize_py = _resolve_tool("TANDEM_COMPONENTIZE_PY", "componentize-py")
+    compile_bin = _resolve_compile_bin()
+    componentize_py = _resolve_componentize_py()
     wit_dir = _resolve_wit_dir()
     cache_dir = _resolve_cache_dir()
 

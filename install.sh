@@ -183,6 +183,59 @@ else
   echo ""
 fi
 
+# 8. Install the Tandem compile engine (tandem-compile). This is the little Rust
+# program the CLI shells out to when you run `tandem build` -- it turns your
+# marked Python into a WASM component. componentize-py itself already came along
+# as one of the CLI's Python dependencies, so all we need here is this binary.
+COMPILE_SRC_MANIFEST="$REPO_ROOT/sdk/core/Cargo.toml"
+COMPILE_DEST="$NODE_HOME_BIN_DIR/tandem-compile"
+
+install_compile_binary() {
+  # A prebuilt binary wins, same as the node (for the download-a-release flow).
+  if [ -n "${TANDEM_COMPILE_BIN:-}" ]; then
+    if [ -f "$TANDEM_COMPILE_BIN" ]; then
+      echo "Using the prebuilt compile binary at $TANDEM_COMPILE_BIN"
+      install -m 0755 "$TANDEM_COMPILE_BIN" "$COMPILE_DEST"
+      return 0
+    fi
+    echo "warning: TANDEM_COMPILE_BIN is set but '$TANDEM_COMPILE_BIN' does not exist; ignoring it."
+  fi
+
+  # Otherwise build it from the source in this repo, if Rust is available.
+  if command -v cargo >/dev/null 2>&1; then
+    echo "Building the Tandem compile engine from source..."
+    if cargo build --release --manifest-path "$COMPILE_SRC_MANIFEST" --bin tandem-compile; then
+      install -m 0755 "$REPO_ROOT/sdk/target/release/tandem-compile" "$COMPILE_DEST"
+      return 0
+    fi
+    echo "warning: building tandem-compile failed -- see the cargo output above."
+    return 1
+  fi
+
+  # No Cargo, but maybe there's already a build lying around from before.
+  if [ -f "$REPO_ROOT/sdk/target/release/tandem-compile" ]; then
+    echo "Cargo isn't installed, but found an existing compile build -- using it."
+    install -m 0755 "$REPO_ROOT/sdk/target/release/tandem-compile" "$COMPILE_DEST"
+    return 0
+  fi
+
+  return 2
+}
+
+if [ "${TANDEM_SKIP_NODE:-0}" = "1" ]; then
+  : # skipping the node usually means a CLI-only install, so skip this too
+elif install_compile_binary; then
+  echo "Tandem compile engine installed at $COMPILE_DEST"
+  echo ""
+else
+  echo ""
+  echo "Could not install the Tandem compile engine (tandem-compile)."
+  echo "The CLI still works, but 'tandem build' won't until it's built."
+  echo "Install Rust (https://rustup.rs) and re-run ./install.sh, or point at a"
+  echo "prebuilt binary: TANDEM_COMPILE_BIN=/path/to/tandem-compile ./install.sh"
+  echo ""
+fi
+
 case ":$PATH:" in
   *":$BIN_DIR:"*)
     echo "Run: tandem --help"
