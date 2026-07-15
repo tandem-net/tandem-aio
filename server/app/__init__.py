@@ -132,6 +132,7 @@ def create_app():
     from app.blueprints.desktop import desktop_bp
     from app.blueprints.index import index_bp
     from app.blueprints.nodes import nodes_bp
+    from app.blueprints.serve import serve_bp
     from app.blueprints.start import start_bp
     from app.blueprints.usage import usage_bp
 
@@ -141,6 +142,8 @@ def create_app():
     app.register_blueprint(nodes_bp, url_prefix="/nodes")
     app.register_blueprint(api_bp, url_prefix="/api/v1")
     app.register_blueprint(usage_bp, url_prefix="/api/v1")
+    # Web hosting: /serve/deploy, /nodes/serve/*, and the public /app/<pid>/ LB.
+    app.register_blueprint(serve_bp)
     # JWT-based auth for CLI and Desktop app
     app.register_blueprint(auth_bp, url_prefix="/api/v1/auth")
     # Desktop/CLI-specific routes (require JWT)

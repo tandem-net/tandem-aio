@@ -15,6 +15,7 @@ import threading
 import time
 
 from app.extensions import redis_client
+from app.utils.serve_queue import reap_stale_serve_nodes
 from app.utils.task_queue import sweep_stale_work
 
 # How often to run a sweep. Matches the node heartbeat cadence so a dead node is
@@ -37,6 +38,7 @@ def _run_loop(app) -> None:
                 try:
                     with app.app_context():
                         sweep_stale_work()
+                        reap_stale_serve_nodes()
                 finally:
                     redis_client.delete(_SWEEP_LOCK_KEY)
         except Exception as exc:  # keep the loop alive no matter what goes wrong
