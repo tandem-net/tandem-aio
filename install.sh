@@ -158,7 +158,13 @@ if [ "${TANDEM_SKIP_NODE:-0}" = "1" ]; then
   echo ""
 elif install_node_binary; then
   NODE_INSTALLED=1
+  # Put tandem-node on PATH next to the tandem command. The CLI finds the node in
+  # ~/.tandem/bin on its own, but the install contract is that both commands end
+  # up on your PATH, so we link it into ~/.local/bin too (same as install.bat,
+  # which drops both in one bin dir).
+  ln -sf "$NODE_DEST" "$BIN_DIR/tandem-node"
   echo "Tandem node installed at $NODE_DEST"
+  echo "Linked: $BIN_DIR/tandem-node -> $NODE_DEST"
   echo ""
 else
   NODE_RC=$?
