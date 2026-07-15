@@ -16,6 +16,7 @@
 //! backend, the cache, and validation together.
 
 pub mod artifact;
+pub mod backends;
 pub mod cache;
 pub mod compile;
 pub mod validate;
