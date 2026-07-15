@@ -71,6 +71,13 @@ def _resolve_node_registration_token(server_dir: pathlib.Path) -> str:
 def create_app():
     app = Flask(__name__)
 
+    # Behind a load balancer or reverse proxy, trust one hop of forwarding
+    # headers so request.host_url and the scheme are right when we build the
+    # URLs we hand back to nodes.
+    from werkzeug.middleware.proxy_fix import ProxyFix
+
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
     server_dir = pathlib.Path(__file__).resolve().parents[1]
 
     database_uri = os.environ.get("DATABASE_URL")
@@ -149,5 +156,13 @@ def create_app():
         except Exception as e:
             print("Warning: could not create database tables at startup:", e)
             # continue without stopping the app; DB may be unavailable locally
+
+    # Start the background failover sweeper so work gets reclaimed off dead nodes
+    # even when nothing is polling. Skipped during tests and if explicitly turned
+    # off (e.g. a one-off management process that shouldn't sweep).
+    if not app.config.get("TESTING") and os.environ.get("TANDEM_DISABLE_SWEEPER") != "1":
+        from app.utils.sweeper import start_sweeper
+
+        start_sweeper(app)
 
     return app

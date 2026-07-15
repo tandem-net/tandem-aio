@@ -455,6 +455,50 @@ def requeue_stale_tasks() -> None:
         redis_client.hset(f"node:{node_id}", mapping={"current_task": ""})
 
 
+def drain_dead_node_queues() -> None:
+    """Move still-unclaimed tasks off the queues of nodes that have gone away.
+
+    Tasks are assigned to a specific node's queue when a job is planned. If that
+    node dies before it ever claims them, nothing in the claim path would move
+    them -- they'd sit there forever. So we sweep the queues of unhealthy nodes
+    and requeue whatever is still waiting to a node that's actually alive.
+    """
+    current = time.time()
+
+    for node_id in get_all_node_ids():
+        node = get_node(node_id)
+        if not node or is_node_healthy(node, now=current):
+            continue
+
+        queue_key = f"node:{node_id}:queue"
+        while True:
+            raw_tid = redis_client.lpop(queue_key)
+            if raw_tid is None:
+                break
+
+            tid = str(decode_value(raw_tid))
+            task = get_task(tid)
+            # Only re-home work that's still waiting to run; anything already
+            # finished or failed can be left where it is.
+            if not task or task.get("status") not in {"queued", "claimed", "running"}:
+                continue
+
+            runtime = task.get("runtime") or "cloudpickle"
+            destinations = get_healthy_node_ids(exclude=node_id, required_runtime=runtime)
+            requeue_task(tid, destinations[0] if destinations else None)
+
+
+def sweep_stale_work() -> None:
+    """One failover pass: reclaim work from nodes that have died.
+
+    First reclaims tasks a dead node had already claimed, then drains any tasks
+    still waiting in dead nodes' queues. Meant to be called on a timer by the
+    background sweeper so failover happens even when no node is polling for work.
+    """
+    requeue_stale_tasks()
+    drain_dead_node_queues()
+
+
 def get_available_nodes(*, required_runtime: str | None = None) -> list[str]:
     requeue_stale_tasks()
     return get_healthy_node_ids(required_runtime=required_runtime)
