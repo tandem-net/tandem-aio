@@ -80,4 +80,7 @@ def split(
     g.__tandem_kind__ = "split"          # type: ignore[attr-defined]
     g.__tandem_chunk__ = chunk_size      # type: ignore[attr-defined]
     g.__tandem_original__ = runnable     # type: ignore[attr-defined]
+    # Expose the raw runnable so the CLI's static analysis inspects the user's
+    # real function rather than this wrapper.
+    g.function = runnable                # type: ignore[attr-defined]
     return g

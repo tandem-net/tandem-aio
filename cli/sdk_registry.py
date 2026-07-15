@@ -22,12 +22,15 @@ class RuntimeSdkSpec:
         ).resolve()
 
 
+# There's a single Python SDK now: the one the user installs is the same one
+# the CLI imports at build time to discover tasks. Both point at the bundled
+# copy under _bundled/sdk/python_sdk.
 _RUNTIME_SDKS: dict[str, RuntimeSdkSpec] = {
     "python": RuntimeSdkSpec(
         runtime="python",
         package_name="tandem",
         import_name="tandem",
-        bundled_relative_path=("_bundled", "sdk", "python"),
+        bundled_relative_path=("_bundled", "sdk", "python_sdk"),
         config_override_keys=("sdk_path", "sdk_python_path"),
     )
 }

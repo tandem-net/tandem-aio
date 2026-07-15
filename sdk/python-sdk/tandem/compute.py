@@ -57,6 +57,9 @@ def compute(batch: int = 1, timeout_ms: int = 50, **kwargs: Any) -> Callable[[F]
         wrapper.__tandem_batch__ = batch           # type: ignore[attr-defined]
         wrapper.__tandem_timeout_ms__ = timeout_ms # type: ignore[attr-defined]
         wrapper.__tandem_original__ = func         # type: ignore[attr-defined]
+        # Also expose the raw function as `.function` so the CLI's static
+        # analysis can inspect the user's real code, not this wrapper.
+        wrapper.function = func                    # type: ignore[attr-defined]
         return wrapper  # type: ignore[return-value]
 
     return decorator

@@ -34,8 +34,6 @@ packages = [
   "tandem_cli",
   "tandem_cli._bundled",
   "tandem_cli._bundled.sdk",
-  "tandem_cli._bundled.sdk.python",
-  "tandem_cli._bundled.sdk.python.tandem",
   "tandem_cli._bundled.sdk.python_sdk",
   "tandem_cli._bundled.sdk.python_sdk.tandem",
 ]

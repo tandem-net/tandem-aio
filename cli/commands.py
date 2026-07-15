@@ -655,17 +655,14 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
     print(f"Output:  {config.output_dir}")
     print(
         f"SDK:     {sdk_info.package} language={sdk_info.language} "
-        f"protocol={sdk_info.protocol_version}"
+        f"version={sdk_info.version}"
     )
     print(f"Tasks:   {len(discovered.tasks)}")
 
-    for export_name, task in sorted(discovered.tasks.items()):
-        metadata = task.metadata
-        print(
-            f"  - {export_name}: annotation={metadata.annotation} "
-            f"canonical={metadata.canonical_annotation} "
-            f"execution_class={metadata.execution_class}"
-        )
+    for descriptor in discovered.task_descriptors:
+        metadata = descriptor.metadata
+        params = ", ".join(metadata.parameters)
+        print(f"  - {descriptor.export_name}: {metadata.kind}({params})")
 
     if report.diagnostics:
         print("\nDiagnostics:")

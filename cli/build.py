@@ -75,7 +75,7 @@ def build_project(config_path: str | Path, *, strict: bool = True) -> BuildResul
     wasm_paths: list[Path] = []
 
     for export_name, task in sorted(discovered.tasks.items()):
-        manifest_entry = entry_lookup[task.metadata.name]
+        manifest_entry = entry_lookup[export_name]
         wasm_path = config.output_dir / manifest_entry["wasm"]
         wasm_path.parent.mkdir(parents=True, exist_ok=True)
         # The compile engine imports the entry module and grabs the marked
