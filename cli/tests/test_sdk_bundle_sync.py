@@ -16,6 +16,7 @@ _TRACKED_FILES = (
     "tandem/compute.py",
     "tandem/discovery.py",
     "tandem/errors.py",
+    "tandem/future.py",
     "tandem/immutable.py",
     "tandem/rpc.py",
     "tandem/split.py",

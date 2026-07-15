@@ -69,13 +69,10 @@ def split(
 
     @functools.wraps(runnable)
     def g(args: Sequence[Any]) -> list[Any]:
-        import os
-        if os.environ.get("TANDEM_WORKER") == "1":
-            return [runnable(item) for item in args]
-            
-        from tandem.rpc import dispatch_task
-        task_name = f"{runnable.__module__}:{runnable.__name__}"
-        return dispatch_task(task_name, (args,), {})
+        # A bare call runs locally: apply the runnable to each input and return
+        # the results in the same order. Running the pieces across nodes goes
+        # through the compute path (`.submit()`).
+        return [runnable(item) for item in args]
 
     g.__tandem_kind__ = "split"          # type: ignore[attr-defined]
     g.__tandem_chunk__ = chunk_size      # type: ignore[attr-defined]
