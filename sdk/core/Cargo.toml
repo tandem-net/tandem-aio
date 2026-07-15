@@ -8,3 +8,4 @@ publish = false
 name = "tandem_core"
 
 [dependencies]
+sha2 = "0.10"

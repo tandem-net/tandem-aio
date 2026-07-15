@@ -1,161 +1,139 @@
-//! Core Tandem SDK primitives for task packing and placeholder task submission.
+//! The Tandem compile engine.
 //!
-//! This crate intentionally keeps the first scaffold small: it defines the
-//! task model, validates payloads, and simulates sending serialized work to a
-//! downstream networking layer.
+//! This crate is the shared brain behind every Tandem SDK. Each language (for
+//! now, Python) gets a thin wrapper that hands source to this engine, and the
+//! engine turns it into a validated WASM artifact a node can run. Keeping the
+//! hard part here means a new language is just a new backend, not a whole new
+//! pipeline.
+//!
+//! The pieces:
+//! * [`compile`] — the request/error types and the [`CompileBackend`] trait.
+//! * [`artifact`] — the compiled output and its content hash.
+//! * [`validate`] — cheap trust checks on WASM bytes.
+//! * [`cache`] — an on-disk cache so we compile the same thing only once.
+//!
+//! The front door most callers want is [`compile_with_cache`], which ties a
+//! backend, the cache, and validation together.
 
-use std::error::Error;
-use std::fmt;
-use std::sync::atomic::{AtomicU64, Ordering};
+pub mod artifact;
+pub mod cache;
+pub mod compile;
+pub mod validate;
 
-static NEXT_TASK_ID: AtomicU64 = AtomicU64::new(1);
+pub use artifact::{hash_bytes, Artifact, ArtifactKind};
+pub use cache::BuildCache;
+pub use compile::{
+    finalize_artifact, CompileBackend, CompileError, CompileOptions, CompileRequest, TaskShape,
+    MAX_ARTIFACT_BYTES,
+};
+pub use validate::{detect_kind, validate_artifact};
 
-/// Result alias used across the Tandem core crate.
-pub type Result<T> = std::result::Result<T, TandemCoreError>;
+/// Compile a request, reusing the cache when we can and validating whatever the
+/// backend produces.
+///
+/// This is the path most callers should use. It checks the cache first, only
+/// runs the (slow) backend on a miss, validates the result, and stores it for
+/// next time. The `source_hash` is supplied by the caller because how you hash
+/// a project depends on the language.
+pub fn compile_with_cache(
+    backend: &dyn CompileBackend,
+    cache: &BuildCache,
+    request: &CompileRequest,
+    source_hash: &str,
+) -> Result<Artifact, CompileError> {
+    let key = BuildCache::key_for(request, source_hash);
 
-/// Errors surfaced by the placeholder Tandem core client.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TandemCoreError {
-    /// The Python or SDK caller attempted to submit an empty payload.
-    EmptyPayload,
-    /// The client was configured with an unusable endpoint.
-    InvalidEndpoint(String),
-}
-
-impl fmt::Display for TandemCoreError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::EmptyPayload => write!(formatter, "task payload cannot be empty"),
-            Self::InvalidEndpoint(endpoint) => {
-                write!(formatter, "client endpoint cannot be empty: {endpoint:?}")
-            }
-        }
-    }
-}
-
-impl Error for TandemCoreError {}
-
-/// Serialized work that can be handed off to Tandem's execution layer.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Task {
-    pub id: String,
-    pub payload: Vec<u8>,
-    pub status: String,
-}
-
-impl Task {
-    /// Builds a new task from a serialized payload.
-    pub fn new(payload: Vec<u8>) -> Result<Self> {
-        if payload.is_empty() {
-            return Err(TandemCoreError::EmptyPayload);
-        }
-
-        let task_number = NEXT_TASK_ID.fetch_add(1, Ordering::Relaxed);
-
-        Ok(Self {
-            id: format!("task-{task_number}"),
-            payload,
-            status: "packed".to_string(),
-        })
-    }
-}
-
-/// Placeholder client responsible for packing and submitting serialized tasks.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Client {
-    endpoint: String,
-}
-
-impl Client {
-    /// Creates a new placeholder client.
-    pub fn new(endpoint: impl Into<String>) -> Result<Self> {
-        let endpoint = endpoint.into();
-
-        if endpoint.trim().is_empty() {
-            return Err(TandemCoreError::InvalidEndpoint(endpoint));
-        }
-
-        Ok(Self { endpoint })
+    // A cache hit means we've built exactly this before, so hand it straight back.
+    if let Some(hit) = cache.get(&key) {
+        return Ok(hit);
     }
 
-    /// Returns the configured endpoint for inspection and logging.
-    pub fn endpoint(&self) -> &str {
-        &self.endpoint
+    // No point running a backend that isn't installed; say so clearly instead.
+    if !backend.is_available() {
+        return Err(CompileError::BackendUnavailable(format!(
+            "no working backend for language '{}'",
+            request.language
+        )));
     }
 
-    /// Converts a raw byte slice into a `Task` instance.
-    pub fn pack_task(&self, payload: &[u8]) -> Result<Task> {
-        Task::new(payload.to_vec())
-    }
-
-    /// Simulates a network send by validating the payload and updating status.
-    pub fn send_task(&self, task: &mut Task) -> Result<()> {
-        if task.payload.is_empty() {
-            return Err(TandemCoreError::EmptyPayload);
-        }
-
-        println!(
-            "Simulating send of task {} ({} bytes) to {}",
-            task.id,
-            task.payload.len(),
-            self.endpoint,
-        );
-
-        task.status.clear();
-        task.status.push_str("submitted");
-
-        Ok(())
-    }
-
-    /// Packs a payload into a task and pushes it through the placeholder send path.
-    pub fn submit_task_bytes(&self, payload: &[u8]) -> Result<Task> {
-        let mut task = self.pack_task(payload)?;
-        self.send_task(&mut task)?;
-        Ok(task)
-    }
-}
-
-impl Default for Client {
-    fn default() -> Self {
-        Self {
-            endpoint: "in-memory://tandem".to_string(),
-        }
-    }
-}
-
-/// Convenience entry point used by language bindings to submit a serialized task.
-pub fn submit_task_bytes(payload: &[u8]) -> Result<Task> {
-    Client::default().submit_task_bytes(payload)
+    let artifact = backend.compile(request)?;
+    cache.put(&key, &artifact)?;
+    Ok(artifact)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{submit_task_bytes, Client, TandemCoreError};
+    use super::*;
+    use std::path::PathBuf;
+
+    // A minimal but valid-looking core module: the magic number plus version 1.
+    fn fake_core_module() -> Vec<u8> {
+        vec![0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]
+    }
+
+    // A minimal but valid-looking component: the magic number plus the
+    // component version/layer bytes.
+    fn fake_component() -> Vec<u8> {
+        vec![0x00, 0x61, 0x73, 0x6d, 0x0d, 0x00, 0x01, 0x00]
+    }
 
     #[test]
-    fn submits_non_empty_payloads() {
-        let result = submit_task_bytes(b"serialized-function");
-        assert!(result.is_ok());
+    fn detects_core_modules_and_components() {
+        assert_eq!(detect_kind(&fake_core_module()).unwrap(), ArtifactKind::CoreModule);
+        assert_eq!(detect_kind(&fake_component()).unwrap(), ArtifactKind::Component);
+    }
 
-        let task = match result {
-            Ok(task) => task,
-            Err(error) => panic!("expected a submitted task, received error: {error}"),
+    #[test]
+    fn rejects_non_wasm_bytes() {
+        assert!(detect_kind(b"not wasm at all").is_err());
+        assert!(detect_kind(&[0x00, 0x61]).is_err());
+    }
+
+    #[test]
+    fn hashes_are_stable_and_content_based() {
+        let one = hash_bytes(b"hello");
+        let two = hash_bytes(b"hello");
+        let different = hash_bytes(b"world");
+        assert_eq!(one, two);
+        assert_ne!(one, different);
+        assert_eq!(one.len(), 64); // sha-256 is 32 bytes = 64 hex chars
+    }
+
+    #[test]
+    fn cache_key_changes_with_options() {
+        let base = CompileRequest {
+            language: "python".to_string(),
+            source_dir: PathBuf::from("/tmp/app"),
+            entry_module: "app".to_string(),
+            entry_function: "crunch".to_string(),
+            shape: TaskShape::Compute,
+            options: CompileOptions::new(),
         };
 
-        assert!(task.id.starts_with("task-"));
-        assert_eq!(task.payload, b"serialized-function");
-        assert_eq!(task.status, "submitted");
+        let mut changed = base.clone();
+        changed.options.set("timeout_ms", "500");
+
+        let key_a = BuildCache::key_for(&base, "sourcehash");
+        let key_b = BuildCache::key_for(&changed, "sourcehash");
+        assert_ne!(key_a, key_b);
     }
 
     #[test]
-    fn rejects_empty_payloads() {
-        let result = submit_task_bytes(&[]);
-        assert!(matches!(result, Err(TandemCoreError::EmptyPayload)));
-    }
+    fn cache_round_trips_an_artifact() {
+        let dir = std::env::temp_dir().join("tandem_core_cache_round_trip");
+        // Start from a clean slate in case a previous run left something behind.
+        let _ = std::fs::remove_dir_all(&dir);
 
-    #[test]
-    fn validates_client_endpoint() {
-        let result = Client::new("   ");
-        assert!(matches!(result, Err(TandemCoreError::InvalidEndpoint(_))));
+        let cache = BuildCache::new(&dir);
+        let artifact = Artifact::new(fake_component(), ArtifactKind::Component);
+
+        assert!(cache.get("mykey").is_none());
+        cache.put("mykey", &artifact).unwrap();
+
+        let loaded = cache.get("mykey").expect("artifact should be cached now");
+        assert_eq!(loaded.bytes, artifact.bytes);
+        assert_eq!(loaded.kind, ArtifactKind::Component);
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
