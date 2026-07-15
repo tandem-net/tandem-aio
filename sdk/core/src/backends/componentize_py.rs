@@ -26,7 +26,12 @@ const ENTRY_SHIM_TEMPLATE: &str = r#"import json
 import importlib
 
 _user_module = importlib.import_module("__MODULE__")
-_user_function = getattr(_user_module, "__FUNCTION__")
+_marked = getattr(_user_module, "__FUNCTION__")
+
+# Tandem's @compute decorator keeps the original function around as
+# __tandem_original__. Inside the compiled component we always want that raw
+# function, never the wrapper (which would try to dispatch back out to a node).
+_user_function = getattr(_marked, "__tandem_original__", _marked)
 
 
 class WitWorld:
