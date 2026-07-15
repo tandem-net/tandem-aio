@@ -115,14 +115,16 @@ class SettingsCommandTests(unittest.TestCase):
 
         return exit_code, stdout.getvalue(), stderr.getvalue()
 
-    def test_show_with_nothing_set_explains_the_split_defaults(self) -> None:
+    def test_show_with_nothing_set_explains_the_default(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             _use_isolated_credentials_file(self, tmpdir)
             exit_code, output, _ = self._run_in_empty_project_dir(["settings", "show"])
 
         self.assertEqual(exit_code, 0)
+        # Every command now shares one default, with a hint for pointing at a
+        # local server instead.
         self.assertIn("tandem.wnusair.org", output)
-        self.assertIn("127.0.0.1:6767", output)
+        self.assertIn("set-server-url http://127.0.0.1:6767", output)
 
     def test_set_then_show_reports_the_saved_override(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -163,7 +165,7 @@ class SettingsCommandTests(unittest.TestCase):
         self.assertIn("Cleared", reset_output)
         self.assertEqual(show_exit, 0)
         self.assertNotIn("http://example.com", show_output)
-        self.assertIn("built-in default", show_output)
+        self.assertIn("the same default", show_output)
 
     def test_show_with_no_registration_token_explains_how_to_set_one(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -218,13 +220,14 @@ class SettingsCommandTests(unittest.TestCase):
 
 class RemoteResolverHonorsStoredUrlTests(unittest.TestCase):
     def test_deploy_and_start_pick_up_the_same_saved_override(self) -> None:
-        """The settings command would be broken in half the CLI if deploy/start
-        kept using their own resolver without checking the saved override too."""
-        with patch("tandem_cli.remote.get_stored_server_url", return_value="http://saved-server:4242"):
+        """Auth, deploy, and start all share one resolver now, so a saved
+        override is honored no matter which command reads it. Patching the
+        keyring layer stands in for a URL saved via `settings set-server-url`."""
+        with patch("tandem_cli.auth._keyring_get", return_value="http://saved-server:4242"):
             self.assertEqual(remote._resolve_server_url(None), "http://saved-server:4242")
 
     def test_an_explicit_flag_still_wins_over_the_saved_override(self) -> None:
-        with patch("tandem_cli.remote.get_stored_server_url", return_value="http://saved-server:4242"):
+        with patch("tandem_cli.auth._keyring_get", return_value="http://saved-server:4242"):
             self.assertEqual(
                 remote._resolve_server_url("http://explicit-flag:5000"),
                 "http://explicit-flag:5000",

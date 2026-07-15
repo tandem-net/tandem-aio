@@ -9,7 +9,7 @@ from typing import Any
 import requests
 
 from .app_config import load_project_config
-from .auth import get_api_key, get_stored_server_url
+from .auth import get_api_key, resolve_server_url
 from .build import build_project
 
 _REQUEST_TIMEOUT_SECONDS = 60
@@ -35,14 +35,13 @@ class StartResult:
 
 
 def _resolve_server_url(server_url: str | None) -> str:
-    resolved = (
-        server_url
-        or get_stored_server_url()
-        or os.environ.get("TANDEM_SERVER_URL")
-        or os.environ.get("SERVER_URL")
-        or "http://127.0.0.1:6767"
-    )
-    return resolved.rstrip("/")
+    # One resolver for the whole CLI. Auth, deploy, start, and the node all point
+    # at the same server, resolved the same way: an explicit --server-url wins,
+    # then the saved setting, then TANDEM_SERVER_URL/SERVER_URL, then the default.
+    # This used to have its own localhost default separate from auth's, which is
+    # how the CLI could end up logging in to one server and deploying to another.
+    # Keeping it a thin wrapper means node_service can still import it by name.
+    return resolve_server_url(server_url)
 
 
 def _resolve_api_key(api_key: str | None) -> str:

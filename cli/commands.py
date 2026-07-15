@@ -83,7 +83,7 @@ def _add_remote_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--server-url",
         default=None,
-        help="Server base URL. Falls back to TANDEM_SERVER_URL or http://127.0.0.1:6767.",
+        help="Server base URL. Falls back to the saved setting, then TANDEM_SERVER_URL, then https://tandem.wnusair.org.",
     )
     parser.add_argument(
         "--api-key",
@@ -98,7 +98,7 @@ def _add_auth_options(
     parser.add_argument(
         "--server-url",
         default=None,
-        help="Server base URL. Falls back to TANDEM_SERVER_URL or http://127.0.0.1:6767.",
+        help="Server base URL. Falls back to the saved setting, then TANDEM_SERVER_URL, then https://tandem.wnusair.org.",
     )
     parser.add_argument(
         "--username",
@@ -841,10 +841,12 @@ def _describe_server_url() -> None:
         print("This is used by every command unless you pass --server-url.")
         return
 
-    print("No server URL is saved, so each command falls back to its own built-in default:")
-    print("  auth / sdk commands default to:     https://tandem.wnusair.org")
-    print("  deploy / start commands default to: http://127.0.0.1:6767")
-    print("\nRun `tandem settings set-server-url <url>` to point everything at one server.")
+    print("No server URL is saved, so every command falls back to the same default:")
+    print("  https://tandem.wnusair.org")
+    print(
+        "\nFor a local server, run `tandem settings set-server-url http://127.0.0.1:6767` "
+        "(or set TANDEM_SERVER_URL) to point everything there."
+    )
 
 
 def _describe_registration_token() -> None:
