@@ -9,7 +9,6 @@ execution markers.
 from __future__ import annotations
 
 import json
-from itertools import cycle
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +22,7 @@ from app.utils.task_queue import (
     get_job,
     get_job_results,
     refresh_job_status,
+    select_least_loaded_node,
 )
 from app.utils.toml_reader import extract_name, get_relevant, parse_toml_string
 from flask import Blueprint, jsonify, request
@@ -151,7 +151,7 @@ def _plan_cloudpickle_tasks(
     if not pickle_files:
         raise ValueError("No cloudpickle files provided")
 
-    node_pool = cycle(available_nodes)
+    node_load: dict[str, int] = {}
     planned_tasks: list[dict[str, Any]] = []
 
     for pickle_file in pickle_files:
@@ -164,7 +164,7 @@ def _plan_cloudpickle_tasks(
             {
                 "filename": filename,
                 "payload": payload,
-                "assigned_node": next(node_pool),
+                "assigned_node": select_least_loaded_node(available_nodes, node_load),
                 "runtime": "cloudpickle",
                 "task_name": Path(filename).stem,
             }
@@ -238,7 +238,7 @@ def _plan_wasm_tasks(
     available_nodes: list[str],
 ) -> list[dict[str, Any]]:
     uploads = _collect_wasm_uploads(wasm_files)
-    node_pool = cycle(available_nodes)
+    node_load: dict[str, int] = {}
     planned_tasks: list[dict[str, Any]] = []
     used_uploads: set[str] = set()
 
@@ -269,7 +269,7 @@ def _plan_wasm_tasks(
             planned_task: dict[str, Any] = {
                 "filename": upload_name,
                 "payload": payload,
-                "assigned_node": next(node_pool),
+                "assigned_node": select_least_loaded_node(available_nodes, node_load),
                 "runtime": "wasm",
                 "task_name": task_name,
                 "timeout_ms": timeout_ms,

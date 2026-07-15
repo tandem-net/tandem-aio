@@ -265,6 +265,30 @@ def create_job(
     }
 
 
+def select_least_loaded_node(available_nodes: list[str], pending: dict[str, int]) -> str:
+    """Pick the node with the fewest queued tasks to hand the next one to.
+
+    We count both the tasks already sitting in a node's Redis queue and the ones
+    we've assigned so far in this same planning pass (tracked in `pending`), so a
+    burst of tasks in one job spreads out across nodes instead of piling onto
+    whoever happened to be shortest when we started. Assignment stays per-node
+    (not a shared pull queue) on purpose: each task's key is wrapped to its
+    node's public key at creation time, and that's what keeps the server from
+    being able to read task payloads.
+    """
+
+    def load(node_id: str) -> int:
+        try:
+            queued = redis_client.llen(f"node:{node_id}:queue") or 0
+        except Exception:
+            queued = 0
+        return int(queued) + pending.get(node_id, 0)
+
+    chosen = min(available_nodes, key=load)
+    pending[chosen] = pending.get(chosen, 0) + 1
+    return chosen
+
+
 def create_task(
     *,
     job_id: str,
