@@ -3,11 +3,17 @@
 FROM ubuntu:24.04
 
 # ca-certificates for outbound TLS; bubblewrap to sandbox hosted web apps;
-# python3 + tar so a hosted Python app can actually run and its bundle unpack.
+# python3 + pip + tar so a hosted Python app can run, its bundle unpack, and so
+# apps that `import tandem` have the SDK available.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        ca-certificates bubblewrap python3 tar \
+        ca-certificates bubblewrap python3 python3-pip tar \
     && rm -rf /var/lib/apt/lists/*
+
+# Make the Tandem SDK importable by hosted apps (they run against the node's
+# system Python inside the sandbox).
+COPY sdk/python-sdk /opt/tandem-sdk
+RUN pip3 install --no-cache-dir --break-system-packages /opt/tandem-sdk
 
 COPY node/target/release/tandem-node /usr/local/bin/tandem-node
 
