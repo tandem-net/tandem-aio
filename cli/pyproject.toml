@@ -12,7 +12,7 @@ dependencies = [
   "requests>=2.0",
   "python-dotenv>=0.21.0",
   "tomli>=2.0; python_version < '3.11'",
-  "py2wasm>=2.6.2",
+  "componentize-py>=0.15",
   "keyring>=24.0",
 ]
 classifiers = [
@@ -42,3 +42,4 @@ packages = [
 
 [tool.setuptools.package-data]
 "tandem_cli._bundled.sdk.python_sdk" = ["pyproject.toml", "README.md"]
+"tandem_cli._bundled" = ["wit/*.wit"]

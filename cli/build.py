@@ -74,11 +74,19 @@ def build_project(config_path: str | Path, *, strict: bool = True) -> BuildResul
     entry_lookup = {entry["name"]: entry for entry in manifest["tasks"]}
     wasm_paths: list[Path] = []
 
-    for _, task in sorted(discovered.tasks.items()):
+    for export_name, task in sorted(discovered.tasks.items()):
         manifest_entry = entry_lookup[task.metadata.name]
         wasm_path = config.output_dir / manifest_entry["wasm"]
         wasm_path.parent.mkdir(parents=True, exist_ok=True)
-        wasm_path.write_bytes(build_wasm(task))
+        # The compile engine imports the entry module and grabs the marked
+        # function by the name it's exported under, so that's what we hand it.
+        wasm_path.write_bytes(
+            build_wasm(
+                source_dir=config.entry_path.parent,
+                entry_module=config.entry_path.stem,
+                entry_function=export_name,
+            )
+        )
         wasm_paths.append(wasm_path)
 
     manifest_path.write_text(
