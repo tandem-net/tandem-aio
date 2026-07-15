@@ -157,6 +157,9 @@ def write_project_config(
     config_path.parent.mkdir(parents=True, exist_ok=True)
 
     resolved_output_dir = output_dir or f".tandem_build/{name}"
+    # A fresh project is a compute project: just [project], matching the SDK's
+    # compute example. Web apps add their own [build] section with a `start`
+    # command and go out through `tandem serve` instead of `tandem start`.
     content = (
         "[project]\n"
         f'name = "{name}"\n'
@@ -164,9 +167,9 @@ def write_project_config(
         f'version = "{version}"\n'
         f'entry = "{entry}"\n'
         f'output_dir = "{resolved_output_dir}"\n'
-        "\n[build]\n"
-        'install = "pip install -r requirements.txt"\n'
-        'start = "python app.py"\n'
+        "\n"
+        "# Hosting a web app instead? Add a [build] section with a start command,\n"
+        '# e.g.  start = "python app.py"  -- then deploy it with `tandem serve`.\n'
     )
 
     config_path.write_text(content, encoding="utf-8")

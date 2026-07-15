@@ -223,12 +223,18 @@ def _planned_wasm_shards(task_entry: dict[str, Any], available_nodes: list[str])
     if strategy != "data_parallel":
         return 1
 
-    max_shards = _coerce_non_negative_int(split_hint.get("max_shards")) or 1
-    if max_shards < 2 or len(available_nodes) < 2:
+    # The unified SDK writes the split hint as `chunk` (from the user's
+    # tandem.split(fn, chunk=N)); older manifests used `max_shards`. Accept
+    # either so the fan-out cap keeps flowing through to the planner.
+    raw_cap = split_hint.get("chunk")
+    if raw_cap is None:
+        raw_cap = split_hint.get("max_shards")
+    shard_cap = _coerce_non_negative_int(raw_cap) or 1
+    if shard_cap < 2 or len(available_nodes) < 2:
         return 1
 
     # No input sharder exists yet, so keep the fan-out tied to live worker count.
-    return min(len(available_nodes), max_shards)
+    return min(len(available_nodes), shard_cap)
 
 
 def _plan_wasm_tasks(
