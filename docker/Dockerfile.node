@@ -2,8 +2,11 @@
 # host (see docker/build.sh), on an Ubuntu base so its glibc matches.
 FROM ubuntu:24.04
 
+# ca-certificates for outbound TLS; bubblewrap to sandbox hosted web apps;
+# python3 + tar so a hosted Python app can actually run and its bundle unpack.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates bubblewrap python3 tar \
     && rm -rf /var/lib/apt/lists/*
 
 COPY node/target/release/tandem-node /usr/local/bin/tandem-node

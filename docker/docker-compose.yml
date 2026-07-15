@@ -38,6 +38,13 @@ services:
     environment:
       TANDEM_SERVER_URL: http://server:6767
       TANDEM_NODE_REGISTRATION_TOKEN: tandem-dev-token
+    # bubblewrap sandboxes web apps with user namespaces, which Docker's default
+    # seccomp/apparmor profiles block. On a real partner-machine node this isn't
+    # needed; inside Docker we relax those so the sandbox can run.
+    security_opt:
+      - seccomp=unconfined
+      - apparmor=unconfined
+      - systempaths=unconfined
     depends_on:
       server:
         condition: service_healthy
@@ -49,6 +56,10 @@ services:
     environment:
       TANDEM_SERVER_URL: http://server:6767
       TANDEM_NODE_REGISTRATION_TOKEN: tandem-dev-token
+    security_opt:
+      - seccomp=unconfined
+      - apparmor=unconfined
+      - systempaths=unconfined
     depends_on:
       server:
         condition: service_healthy

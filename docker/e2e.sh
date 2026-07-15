@@ -64,6 +64,50 @@ assert results == expected, f"expected {expected}, got {results}"
 print("gather OK")
 PY
 
+say "web hosting: deploy an app across the nodes and load-balance to it"
+PID="$(cd /opt/tandem/sample-serve && python3 -c '
+import os
+from tandem_cli.remote import serve_deploy
+from tandem_cli.app_config import load_project_config
+c = load_project_config("tandem.toml")
+r = serve_deploy(
+    project_root=str(c.project_root), start_command=c.build_start, replicas=2, name=c.name,
+    server_url=os.environ["TANDEM_SERVER_URL"], api_key=os.environ["TANDEM_API_KEY"],
+)
+print(r["pid"])
+')"
+echo "serve deployment id: $PID"
+APP_URL="$SERVER/app/$PID/"
+
+echo "waiting for the hosted app to come up on the nodes..."
+UP=""
+for _ in $(seq 1 40); do
+  if curl -sf "$APP_URL" >/dev/null 2>&1; then UP="yes"; break; fi
+  sleep 2
+done
+if [ -z "$UP" ]; then
+  echo "FAIL: the hosted app never became reachable"
+  exit 1
+fi
+
+echo "one response through the load balancer:"
+curl -sf "$APP_URL"
+curl -sf "$APP_URL" | grep -q "hello from the tandem web app" || {
+  echo "FAIL: unexpected app response"
+  exit 1
+}
+
+echo "hitting the load balancer 12 times to see traffic spread across nodes..."
+SERVING_NODES="$(for _ in $(seq 1 12); do curl -sf "$APP_URL" 2>/dev/null; done | grep -oE 'node_[a-f0-9]+' | sort -u)"
+echo "distinct nodes that served traffic:"
+echo "$SERVING_NODES"
+DISTINCT="$(printf '%s\n' "$SERVING_NODES" | grep -c 'node_')"
+if [ "$DISTINCT" -lt 2 ]; then
+  echo "FAIL: expected the load balancer to spread across 2 nodes, saw $DISTINCT"
+  exit 1
+fi
+echo "load balancing confirmed across $DISTINCT nodes"
+
 say "tandem usage"
 tandem usage --server-url "$SERVER" --api-key "$API_KEY"
 
