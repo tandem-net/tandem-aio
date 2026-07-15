@@ -569,6 +569,28 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     _add_remote_options(usage_parser)
 
+    serve_parser = subparsers.add_parser(
+        "serve",
+        help="Host a web app on your Tandem nodes, behind the load balancer.",
+    )
+    serve_parser.add_argument(
+        "config_path",
+        nargs="?",
+        default=os.environ.get("TANDEM_CONFIG_PATH", "tandem.toml"),
+        help="Path to the Tandem TOML config. Defaults to tandem.toml.",
+    )
+    serve_parser.add_argument(
+        "--start",
+        help="Command that starts your app. Defaults to [build] start in tandem.toml.",
+    )
+    serve_parser.add_argument(
+        "--replicas",
+        type=int,
+        default=2,
+        help="How many nodes to run the app on. Default 2.",
+    )
+    _add_remote_options(serve_parser)
+
     node_parser = subparsers.add_parser(
         "node",
         help="Run and manage the background Tandem node on this machine.",
@@ -1078,6 +1100,36 @@ def _cmd_usage(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_serve(args: argparse.Namespace) -> int:
+    from .app_config import load_project_config
+    from .remote import serve_deploy
+
+    config = load_project_config(args.config_path)
+    start_command = getattr(args, "start", None) or config.build_start
+    if not start_command:
+        print(
+            "No start command found. Set `start` under [build] in tandem.toml, "
+            'or pass --start "...".'
+        )
+        return 1
+
+    result = serve_deploy(
+        project_root=str(config.project_root),
+        start_command=start_command,
+        replicas=args.replicas,
+        name=config.name,
+        server_url=getattr(args, "server_url", None),
+        api_key=getattr(args, "api_key", None),
+    )
+
+    pid = result.get("pid", "?")
+    url = result.get("url", "?")
+    print(f"{Colors.GREEN}Hosting '{config.name}' as {pid}{Colors.RESET}")
+    print(f"  Reachable at {url} through the Tandem load balancer.")
+    print(f"  Running on up to {args.replicas} node(s).")
+    return 0
+
+
 def _registration_failure_hint(message: str) -> str | None:
     """A concrete next step for the specific registration failures we know how
     to fix. Returns None for anything else, so we don't guess at unrelated
@@ -1404,6 +1456,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _cmd_status(args)
         if args.command == "usage":
             return _cmd_usage(args)
+        if args.command == "serve":
+            return _cmd_serve(args)
         if args.command == "node":
             if args.node_command == "start":
                 return _cmd_node_start(args)

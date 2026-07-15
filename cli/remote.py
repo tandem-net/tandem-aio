@@ -267,3 +267,55 @@ def fetch_usage(
     if not isinstance(payload, dict):
         raise RuntimeError("Usage response was not valid JSON.")
     return payload
+
+
+def serve_deploy(
+    *,
+    project_root: str,
+    start_command: str,
+    replicas: int,
+    name: str,
+    server_url: str | None = None,
+    api_key: str | None = None,
+) -> dict[str, Any]:
+    """Tar the project and hand it to the server to host on the nodes."""
+    import io
+    import pathlib
+    import tarfile
+
+    resolved_server_url = _resolve_server_url(server_url)
+    resolved_api_key = _resolve_api_key(api_key)
+
+    # Skip build output, caches, and VCS -- the app just needs its own source.
+    skip = {".tandem_build", ".tandem", "__pycache__", ".git"}
+
+    def _filter(tarinfo: tarfile.TarInfo):
+        parts = tarinfo.name.split("/")
+        if any(part in skip for part in parts):
+            return None
+        return tarinfo
+
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w") as tar:
+        tar.add(str(pathlib.Path(project_root)), arcname=".", filter=_filter)
+    buffer.seek(0)
+
+    response = requests.post(
+        f"{resolved_server_url}/serve/deploy",
+        headers=_headers(resolved_api_key),
+        data={
+            "start_command": start_command,
+            "replicas": str(replicas),
+            "name": name,
+        },
+        files={"bundle": ("bundle.tar", buffer, "application/x-tar")},
+        timeout=60,
+    )
+
+    if response.status_code != 201:
+        _raise_response_error(response)
+
+    payload = _response_payload(response)
+    if not isinstance(payload, dict):
+        raise RuntimeError("Serve deploy response was not valid JSON.")
+    return payload

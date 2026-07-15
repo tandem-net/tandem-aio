@@ -57,29 +57,41 @@ def _keyring_available() -> bool:
 
 
 def _keyring_set(key: str, value: str) -> None:
+    # keyring may import fine but have no working backend (e.g. a headless server
+    # or container). In that case fall back to the secure file instead of crashing.
     if _keyring_available():
         import keyring
-        keyring.set_password(_KEYRING_SERVICE, key, value)
-    else:
-        _file_set(key, value)
+
+        try:
+            keyring.set_password(_KEYRING_SERVICE, key, value)
+            return
+        except Exception:
+            pass
+    _file_set(key, value)
 
 
 def _keyring_get(key: str) -> str | None:
     if _keyring_available():
         import keyring
-        return keyring.get_password(_KEYRING_SERVICE, key)
+
+        try:
+            value = keyring.get_password(_KEYRING_SERVICE, key)
+            if value is not None:
+                return value
+        except Exception:
+            pass
     return _file_get(key)
 
 
 def _keyring_delete(key: str) -> None:
     if _keyring_available():
         import keyring
+
         try:
             keyring.delete_password(_KEYRING_SERVICE, key)
         except Exception:
             pass
-    else:
-        _file_delete(key)
+    _file_delete(key)
 
 
 def _file_set(key: str, value: str) -> None:
