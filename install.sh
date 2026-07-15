@@ -23,7 +23,7 @@ case "$(uname -s)" in
   Linux|Darwin) ;;
   *)
     echo "This installer only supports Linux and macOS."
-    echo "On Windows, follow the manual install steps in cli/README.md instead."
+    echo "On Windows, run install.bat instead."
     exit 1
     ;;
 esac

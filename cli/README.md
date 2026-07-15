@@ -9,24 +9,16 @@ You do **not** need to run `python cli/main.py` or `python cli/cli.py` anymore.
 
 ### Linux / macOS
 
-The easiest way in is the installer script from the repo root -- it sets up its
-own private Python environment and puts `tandem` on your PATH, so you don't
-need to know anything about Python packaging:
+The way in is the installer script from the repo root -- it sets up its own
+private Python environment and puts `tandem` on your PATH, so you don't need to
+know anything about Python packaging:
 
 ```bash
 ./install.sh
 ```
 
-Not working from a checkout? The prebuilt `.deb` (Linux) and `.dmg` (macOS) carry
-the `tandem` command with them, so installing one is enough -- no Python needed.
-See [packaging/README.md](../packaging/README.md).
-
-If you're working on the CLI's own code, install it in editable mode instead
-so your local edits take effect immediately:
-
-```bash
-python -m pip install -e ./cli
-```
+Re-run it any time to pick up changes to the CLI or node -- that's the supported
+way to install and update.
 
 ### Windows
 
@@ -38,12 +30,7 @@ install.bat
 ```
 
 It sets up a private Python environment, puts a `tandem` command on your PATH, and
-installs the node (building it if you have Rust). To install just the CLI in
-editable mode for development instead:
-
-```powershell
-py -m pip install -e .\cli
-```
+installs the node (building it if you have Rust). Re-run it any time to update.
 
 Then verify it:
 
@@ -193,8 +180,8 @@ From the repo root:
 ./install.sh
 ```
 
-This installs the `tandem` command and builds/installs the node binary. (If you
-only want the CLI in editable mode for development: `python -m pip install -e ./cli`.)
+This installs the `tandem` command and builds/installs the node binary. Re-run it
+any time to update.
 
 #### Windows
 

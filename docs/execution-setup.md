@@ -9,15 +9,9 @@ Replace `<SERVER_URL>` with the Tandem server you're connecting to (for example
 `https://tandem.wnusair.org`).
 
 You need **Python 3.10+** for the CLI on every platform. The node is a compiled
-binary -- the installer builds it from source if you have **Rust**, otherwise you
-point it at a prebuilt binary (see
-[Building the downloadable packages](#building-the-downloadable-packages-deb--dmg--exe)
-at the bottom).
-
-> **Note:** the `.deb`, `.dmg`, and `.exe` are **not** checked into the repo --
-> they're compiled artifacts (~20 MB each), so you either let `install.sh` /
-> `install.bat` build the node for you, or you build a package yourself with the
-> commands at the bottom, or you download one from a release.
+binary -- `install.sh` / `install.bat` build it from source if you have **Rust**,
+otherwise they tell you how to drop in a prebuilt `tandem-node` binary. Installing
+or updating is always the same one step: run the script.
 
 ---
 
@@ -37,16 +31,6 @@ tandem node enable                        # run 24/7 (starts on boot, restarts o
 tandem status                             # confirm: Node: running
 ```
 
-Prefer a prebuilt package over building from source? The `.deb` bundles both
-commands (`tandem` and `tandem-node`), so you don't need the checkout or
-`install.sh` at all:
-
-```bash
-sudo apt install ./tandem_<version>_amd64.deb   # or: sudo dpkg -i tandem_<version>_amd64.deb
-tandem --help                                   # both commands are on your PATH now
-# then the same settings / auth / enable / status steps as above
-```
-
 ---
 
 ## macOS
@@ -61,10 +45,6 @@ tandem auth register                      # or: tandem auth login
 tandem node enable                        # run 24/7 (starts on login, restarts on crash)
 tandem status
 ```
-
-Prefer the prebuilt `.dmg`? Open it and double-click **Install.command** -- that
-installs both commands, so you can go straight to the settings / auth / enable /
-status steps.
 
 ---
 
@@ -123,51 +103,3 @@ This removes Tandem completely: it stops the node (and any 24/7 service), clears
 your saved login, and deletes `~/.tandem` and the `tandem` command. Because
 there's no undo, it prints a random 6-digit code you have to type back to
 confirm -- type anything else and it does nothing.
-
----
-
-## Building the downloadable packages (.deb / .dmg / .exe)
-
-Yes -- these are built on demand, not shipped in the repo. Each one is built on
-its own OS (that's the reliable way; cross-building a `.dmg` or `.exe` from Linux
-is a headache). Build outputs land in `packaging/dist/`.
-
-The `.deb` and `.dmg` bundle both commands (`tandem` + `tandem-node`). Building
-the CLI binary needs Python 3.10+, which the scripts set up in a throwaway
-virtualenv, so there's nothing to install first.
-
-**Linux `.deb`** -- on any machine with `dpkg-deb`:
-
-```bash
-bash packaging/build-deb.sh
-# -> packaging/dist/tandem_<version>_amd64.deb
-sudo apt install ./packaging/dist/tandem_*.deb      # to install it locally
-```
-
-**macOS `.dmg`** -- on a Mac:
-
-```bash
-bash packaging/build-dmg.sh
-# -> packaging/dist/tandem-macos-<arch>.dmg
-```
-
-**Windows `.exe`** -- on Windows with Rust. The node binary is the deliverable;
-Windows users install the `tandem` command with `install.bat`.
-
-```bat
-cargo build --release --manifest-path node\Cargo.toml
-REM ship node\target\release\tandem-node.exe
-```
-
-**All three at once (CI)** -- you can't make a `.dmg` or `.exe` on Linux, so the
-real cross-platform build lives in
-[`.github/workflows/release.yml`](../.github/workflows/release.yml). Push a version
-tag and it builds every package on its own runner and attaches them to a GitHub
-Release:
-
-```bash
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-More detail in [packaging/README.md](../packaging/README.md).
