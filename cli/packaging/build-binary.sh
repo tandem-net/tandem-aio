@@ -54,12 +54,14 @@ VENV_PY="$VENV_DIR/bin/python"
 
 # 3. Install PyInstaller plus the libraries the CLI actually imports at runtime.
 #
-# These mirror the dependencies in cli/pyproject.toml, with one deliberate
-# exception: py2wasm. The CLI never imports py2wasm -- it runs it as a separate
-# `py2wasm` command (see cli/wasm.py), so it's a build tool the user installs
-# alongside the CLI, not something that belongs baked inside this binary. Leaving
-# it out keeps the binary small. If this list ever falls out of sync with
-# pyproject.toml, the smoke test in step 6 will fail the build and tell us.
+# These mirror the runtime dependencies in cli/pyproject.toml, with one
+# deliberate exception: componentize-py. The CLI never imports it -- `tandem
+# build` shells out to the `tandem-compile` engine, which in turn runs
+# `componentize-py` as a separate command (see cli/wasm.py). tandem-compile is
+# its own binary (the .deb ships it in /usr/bin), so nothing about the compile
+# path belongs baked inside this CLI binary. Leaving componentize-py out keeps
+# the binary small. If this list falls out of sync with pyproject.toml, the smoke
+# test in step 6 fails the build and tells us.
 echo "Installing PyInstaller and the CLI's runtime dependencies..."
 "$VENV_PY" -m pip install --quiet \
   pyinstaller \
@@ -69,7 +71,8 @@ echo "Installing PyInstaller and the CLI's runtime dependencies..."
   "tomli>=2.0"
 
 # Install the CLI package itself, but without its dependencies (--no-deps) so pip
-# doesn't drag py2wasm back in. We just handled the deps we want above.
+# doesn't drag the heavy compile toolchain back in. We handled the deps we want
+# above.
 "$VENV_PY" -m pip install --quiet --no-deps "$CLI_DIR"
 
 # 4. Give PyInstaller a tiny entry script to start from. It does exactly what the

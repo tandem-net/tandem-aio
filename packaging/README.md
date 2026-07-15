@@ -1,14 +1,18 @@
 # Packaging Tandem
 
 These scripts turn Tandem into downloadable installers -- one file a person can
-double-click to get both commands:
+double-click to get the commands on their PATH:
 
 - **`tandem`** -- the command-line tool (a Python app frozen into a single binary)
 - **`tandem-node`** -- the compute node it drives (a Rust binary)
+- **`tandem-compile`** -- the compile engine `tandem build` shells out to (a Rust binary)
 
-The goal is that a package gives you exactly what `install.sh` gives you, just
-shipped as a file instead of run from a source checkout. See "How this fits
-together" below for why both exist.
+The goal is that a package gives you what `install.sh` gives you, just shipped as a
+file instead of run from a source checkout. The one thing a package can't bundle
+is componentize-py (the Python toolchain `tandem-compile` calls to lower Python
+into WASM), so a package is everything you need to run a node and
+deploy/start/serve out of the box; `tandem build` also works once componentize-py
+is on the machine. See "How this fits together" below.
 
 ## The pieces
 
@@ -18,12 +22,14 @@ itself, and the installers just collect the finished binaries.
 | What | Built by | Output |
 |------|----------|--------|
 | the node binary | `cargo build --release` (in `node/`) | `node/target/release/tandem-node` |
+| the compile engine | `cargo build --release --bin tandem-compile` (in `sdk/`) | `sdk/target/release/tandem-compile` |
 | the CLI binary  | [`cli/packaging/build-binary.sh`](../cli/packaging/build-binary.sh) | `cli/packaging/dist/tandem` |
 | Linux `.deb`    | [`build-deb.sh`](build-deb.sh) | `packaging/dist/tandem_<version>_<arch>.deb` |
 | macOS `.dmg`    | [`build-dmg.sh`](build-dmg.sh) | `packaging/dist/tandem-macos-<arch>.dmg` |
 
-`build-deb.sh` and `build-dmg.sh` each make sure both binaries exist (building
-whichever is missing) and then wrap them up. So you can just run the installer
+`build-deb.sh` reuses the two Rust binaries if they're already built (they only
+change when you recompile them) but always rebuilds the CLI binary, so the package
+never ships stale CLI code. Then it wraps everything up -- just run the installer
 builder and it handles the rest.
 
 ## Build one locally
@@ -75,7 +81,7 @@ tandem node enable     # run it 24/7 (starts on boot/login, restarts on crash)
 tandem status          # is it running?
 ```
 
-The `.deb` installs both binaries to `/usr/bin`, the `.dmg`'s installer copies
+The `.deb` installs the binaries to `/usr/bin`, the `.dmg`'s installer copies
 them to `/usr/local/bin`, and `install.sh` puts them under `~/.tandem` -- the CLI
 finds the node in any of those plus your `PATH`.
 
@@ -88,8 +94,10 @@ They just suit different situations:
   CLI into a private virtualenv and build the node from source (or drop in a
   prebuilt one). This is the developer path -- re-running picks up your local
   code changes immediately.
-- **The `.deb` / `.dmg`** are for people who just want to install and run. They
-  ship the already-built binaries, so there's no Python, pip, or Rust needed on
-  the target machine -- just the one file.
+- **The `.deb` / `.dmg`** are for people who just want to install and run a node.
+  They ship the already-built binaries, so there's no Python, pip, or Rust needed
+  to run the node or deploy/start/serve -- just the one file. Building tasks
+  (`tandem build`) additionally needs componentize-py on the machine, which is why
+  developers who build usually take the `install.sh` path.
 
 So they're not doing different *things*; they're two ways to land the same result.

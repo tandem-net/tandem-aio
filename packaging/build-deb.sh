@@ -5,19 +5,20 @@
 #   packaging/build-deb.sh
 #
 # Produces packaging/dist/tandem_<version>_<arch>.deb. Installing that one package
-# puts BOTH commands on the user's PATH in /usr/bin:
+# puts all three commands on the user's PATH in /usr/bin:
 #
-#   tandem        the command-line tool (a bundled Python binary)
-#   tandem-node   the compute node it drives (the Rust worker)
+#   tandem          the command-line tool (a bundled Python binary)
+#   tandem-node     the compute node it drives (the Rust worker)
+#   tandem-compile  the compile engine `tandem build` shells out to (Rust)
 #
 # So a person can double-click the .deb (or `sudo apt install ./the.deb`) and
 # immediately run `tandem -h` -- no Python, no pip, no separate node download.
 # This is the packaged twin of install.sh: same end result, but shipped as a
 # single file instead of run from a checkout.
 #
-# Runs anywhere dpkg-deb is available. It leans on two smaller builders to
-# produce the actual binaries first:
-#   - the node comes from `cargo build` (see below)
+# Runs anywhere dpkg-deb is available. It leans on smaller builders to produce
+# the actual binaries first:
+#   - the node and the compile engine come from `cargo build` (see below)
 #   - the CLI comes from ../cli/packaging/build-binary.sh
 
 set -euo pipefail
@@ -57,13 +58,22 @@ if [ ! -f "$NODE_BINARY" ]; then
   cargo build --release --manifest-path "$NODE_DIR/Cargo.toml"
 fi
 
-# 2. Make sure the CLI binary exists, building it if needed. Its own script knows
-# how to turn the Python package into a single executable.
-CLI_BINARY="$CLI_DIR/packaging/dist/tandem"
-if [ ! -f "$CLI_BINARY" ]; then
-  echo "Building the CLI binary first..."
-  bash "$CLI_DIR/packaging/build-binary.sh"
+# 1b. Same for the compile engine `tandem build` shells out to. It's a Rust
+# workspace binary, so the build output lands under sdk/target (not sdk/core).
+COMPILE_BINARY="$REPO_ROOT/sdk/target/release/tandem-compile"
+if [ ! -f "$COMPILE_BINARY" ]; then
+  echo "Building the compile engine (tandem-compile) first..."
+  cargo build --release --manifest-path "$REPO_ROOT/sdk/core/Cargo.toml" --bin tandem-compile
 fi
+
+# 2. Build the CLI binary fresh. Unlike the Rust binaries above -- which only
+# change when you actually recompile them -- the CLI's Python changes often, so we
+# always rebuild it here. Reusing a leftover executable from a previous run would
+# silently ship stale CLI code in the package. Its own script turns the Python
+# package into a single executable.
+CLI_BINARY="$CLI_DIR/packaging/dist/tandem"
+echo "Building the CLI binary..."
+bash "$CLI_DIR/packaging/build-binary.sh"
 
 echo "Packaging tandem $VERSION ($ARCH)..."
 
@@ -76,6 +86,7 @@ mkdir -p "$STAGING/usr/bin"
 
 install -m 0755 "$CLI_BINARY" "$STAGING/usr/bin/tandem"
 install -m 0755 "$NODE_BINARY" "$STAGING/usr/bin/tandem-node"
+install -m 0755 "$COMPILE_BINARY" "$STAGING/usr/bin/tandem-compile"
 
 # Note: the heredoc delimiter is unquoted so $VERSION and $ARCH expand. That
 # means backticks and $(...) in the body would run as commands, so keep them
@@ -95,10 +106,11 @@ Maintainer: Tandem <tandem@wnusair.org>
 Replaces: tandem-node
 Conflicts: tandem-node
 Provides: tandem-node
-Description: Tandem CLI and compute node
+Description: Tandem CLI, compute node, and compile engine
  Everything you need to run Tandem locally, in one package. The tandem command
- builds and deploys WASM jobs; tandem-node is the Rust worker that runs them.
- After installing, log in with 'tandem auth login' and start the worker with
+ deploys and runs WASM jobs, tandem-compile turns marked Python into WASM
+ components for it, and tandem-node is the Rust worker that executes them. After
+ installing, log in with 'tandem auth login' and start the worker with
  'tandem node start'.
 CONTROL
 
