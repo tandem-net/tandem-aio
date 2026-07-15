@@ -1,4 +1,4 @@
-use wasmtime::component::{Component, Linker as ComponentLinker};
+use wasmtime::component::{Component, Linker as ComponentLinker, Val};
 use wasmtime::{Config, Engine, Linker, Module, Store};
 use wasmtime_wasi::preview1::WasiP1Ctx;
 use wasmtime_wasi::{IoView, ResourceTable, WasiCtx, WasiCtxBuilder, WasiView};
@@ -184,11 +184,15 @@ impl WasiView for ComponentHost {
     }
 }
 
-/// Run a WASM component (the wasip2 world) as a command: feed it the input on
-/// stdin, capture stdout, and meter fuel exactly like the core-module path.
+/// Run a WASM component (the wasip2 world) by calling its `run` export.
 ///
-/// We use the synchronous WASI bindings so this stays a plain blocking call,
-/// which keeps it easy to run from the worker's `spawn_blocking` context.
+/// Every Tandem task component, whatever language it came from, exports the
+/// same tiny contract: `run(list<u8>) -> list<u8>` — the JSON input bytes go in,
+/// the JSON result bytes come out. We call it by name through the dynamic
+/// component API so the node doesn't need the WIT definition at build time.
+///
+/// This is a plain blocking call using the synchronous WASI linker, which keeps
+/// it easy to run from the worker's `spawn_blocking` context.
 fn run_component(
     wasm_bytes: &[u8],
     input_bytes: &[u8],
@@ -200,15 +204,9 @@ fn run_component(
 
     let component = Component::from_binary(&engine, wasm_bytes)?;
 
-    // Same stdin-in / stdout-captured surface as the core-module path.
-    let stdout_buf = wasmtime_wasi::pipe::MemoryOutputPipe::new(1024 * 1024); // 1 MiB cap
-    let stdin_buf = wasmtime_wasi::pipe::MemoryInputPipe::new(input_bytes.to_vec());
-
-    let ctx = WasiCtxBuilder::new()
-        .stdin(stdin_buf)
-        .stdout(stdout_buf.clone())
-        .build();
-
+    // Give the component the standard WASI surface it imports, but no real files
+    // or sockets: a compute task only ever gets its input and returns its output.
+    let ctx = WasiCtxBuilder::new().build();
     let host = ComponentHost {
         ctx,
         table: ResourceTable::new(),
@@ -219,21 +217,41 @@ fn run_component(
     let mut linker: ComponentLinker<ComponentHost> = ComponentLinker::new(&engine);
     wasmtime_wasi::add_to_linker_sync(&mut linker)?;
 
-    let command =
-        wasmtime_wasi::bindings::sync::Command::instantiate(&mut store, &component, &linker)?;
-    match command.wasi_cli_run().call_run(&mut store) {
-        Err(err) => interpret_run_error(err)?,
-        // The inner result is the guest's own success/failure signal.
-        Ok(Err(())) => return Err("guest program exited with a non-zero status".into()),
-        Ok(Ok(())) => {}
+    let instance = linker.instantiate(&mut store, &component)?;
+
+    let run = instance
+        .get_func(&mut store, "run")
+        .ok_or("component does not export a `run` function")?;
+
+    // Hand the input bytes to `run` as a `list<u8>` and make room for the one
+    // `list<u8>` it returns.
+    let input_val = Val::List(input_bytes.iter().map(|byte| Val::U8(*byte)).collect());
+    let mut results = [Val::Bool(false)];
+
+    if let Err(err) = run.call(&mut store, &[input_val], &mut results) {
+        // A fuel-exhaustion or real trap becomes an error here; a clean exit(0)
+        // would leave us without a result, which is still a failure for a task.
+        interpret_run_error(err)?;
+        return Err("component `run` did not return a result".into());
     }
+    // Let the guest run any cleanup it registered for after returning.
+    run.post_return(&mut store)?;
+
+    let output: Vec<u8> = match &results[0] {
+        Val::List(items) => items
+            .iter()
+            .map(|value| match value {
+                Val::U8(byte) => *byte,
+                _ => 0,
+            })
+            .collect(),
+        _ => return Err("component `run` returned an unexpected type".into()),
+    };
 
     let fuel_remaining = store.get_fuel()?;
     let instruction_count = fuel_budget.saturating_sub(fuel_remaining);
 
     drop(store);
-
-    let output: Vec<u8> = stdout_buf.try_into_inner().unwrap_or_default().into();
 
     // Components don't expose a single linear memory the way core modules do, so
     // the memory hash is best-effort here. The output hash, fuel count, and the
@@ -251,14 +269,15 @@ fn run_component(
 mod tests {
     use super::*;
 
-    // Real fixtures built from the same tiny "echo" program: one compiled to a
-    // wasip1 core module, one to a wasip2 component. They read stdin and write
-    // it straight back, which is enough to prove both execution paths deliver
-    // input and capture output.
+    // A wasip1 core module built from a tiny "echo" program (reads stdin, writes
+    // it back), used to check the classic core-module path still works.
     const ECHO_MODULE: &[u8] = include_bytes!("../tests/fixtures/echo_module.wasm");
-    const ECHO_COMPONENT: &[u8] = include_bytes!("../tests/fixtures/echo_component.wasm");
 
-    // Frame wasm bytes and stdin input the way the rest of Tandem frames a task
+    // A real wasip2 component that implements Tandem's `run(list<u8>) -> list<u8>`
+    // contract as an echo, used to check the component run-export path.
+    const TASK_COMPONENT: &[u8] = include_bytes!("../tests/fixtures/task_run_component.wasm");
+
+    // Frame wasm bytes and the task input the way the rest of Tandem frames a
     // payload: the "TNDM" magic, a little-endian wasm length, the wasm, then the input.
     fn frame(wasm: &[u8], input: &[u8]) -> Vec<u8> {
         let mut payload = Vec::new();
@@ -271,7 +290,7 @@ mod tests {
 
     #[test]
     fn detects_component_vs_core_module() {
-        assert!(is_component(ECHO_COMPONENT));
+        assert!(is_component(TASK_COMPONENT));
         assert!(!is_component(ECHO_MODULE));
     }
 
@@ -284,8 +303,8 @@ mod tests {
     }
 
     #[test]
-    fn runs_a_component_and_captures_stdout() {
-        let payload = frame(ECHO_COMPONENT, b"hello from a component");
+    fn runs_a_component_via_run_export() {
+        let payload = frame(TASK_COMPONENT, b"hello from a component");
         let result = execute_wasm(&payload, None).expect("component should run");
         assert_eq!(result.output, b"hello from a component");
         assert!(result.instruction_count > 0);
