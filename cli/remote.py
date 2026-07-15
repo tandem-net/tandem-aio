@@ -179,13 +179,25 @@ def start_project(
             ),
         ]
 
+        # The node splits a task blob on the "TNDM" magic into the wasm module
+        # and the JSON input handed to the component's `run` export. `tandem
+        # start` runs each task once with no arguments, so we frame every wasm
+        # with an empty [args, kwargs]. Without this the node would hand `run`
+        # empty bytes and the task would trap on `json.loads(b"")`. Passing
+        # arguments to a specific task is what the SDK's `.submit()` is for.
+        empty_input = json.dumps([[], {}]).encode("utf-8")
         for wasm_path in build_result.wasm_paths:
-            wasm_handle = wasm_path.open("rb")
-            handles.append(wasm_handle)
+            wasm_bytes = wasm_path.read_bytes()
+            framed_blob = (
+                b"TNDM"
+                + len(wasm_bytes).to_bytes(4, "little")
+                + wasm_bytes
+                + empty_input
+            )
             files.append(
                 (
                     "wasm_files",
-                    (wasm_path.name, wasm_handle, "application/wasm"),
+                    (wasm_path.name, framed_blob, "application/wasm"),
                 )
             )
 
