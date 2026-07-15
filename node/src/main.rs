@@ -4,6 +4,7 @@ mod executor;
 mod health;
 mod registration;
 mod sandbox;
+mod serve;
 mod state;
 mod worker;
 
