@@ -14,6 +14,8 @@ import json
 import time
 import uuid
 
+from redis.exceptions import TimeoutError as RedisTimeoutError
+
 from app.extensions import redis_client
 from app.utils.task_queue import (
     decode_value,
@@ -146,6 +148,20 @@ def enqueue_request(pid: str, *, method: str, path: str, headers: list, body_b64
     return req_id
 
 
+def _blpop_or_none(keys: list[str], timeout: float):
+    """A blocking pop where a read timeout counts as an empty result.
+
+    On a threaded server, redis-py can let a pooled connection's socket read
+    time out right at the edge of the BLPOP block window and raise instead of
+    returning nil. For a long-poll that just means "nothing showed up in time",
+    so we fold it into None and let the caller poll again -- otherwise every
+    idle poll turns into a spurious 500."""
+    try:
+        return redis_client.blpop(keys, timeout=int(timeout))
+    except RedisTimeoutError:
+        return None
+
+
 def claim_request(pids: list[str], timeout: float) -> tuple[str, dict] | None:
     """A serving node long-polls for the next request across the deployments it
     hosts. Returns (req_id, request) or None on timeout."""
@@ -153,7 +169,7 @@ def claim_request(pids: list[str], timeout: float) -> tuple[str, dict] | None:
         time.sleep(min(timeout, 1.0))
         return None
 
-    popped = redis_client.blpop([_pending_key(p) for p in pids], timeout=int(timeout))
+    popped = _blpop_or_none([_pending_key(p) for p in pids], timeout=int(timeout))
     if popped is None:
         return None
 
@@ -173,7 +189,7 @@ def submit_response(req_id: str, *, status: int, headers: list, body_b64: str) -
 
 
 def wait_for_response(req_id: str, timeout: float) -> dict | None:
-    popped = redis_client.blpop([_response_key(req_id)], timeout=int(timeout))
+    popped = _blpop_or_none([_response_key(req_id)], timeout=int(timeout))
     if popped is None:
         return None
     _key, raw = popped
