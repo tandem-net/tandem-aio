@@ -65,5 +65,29 @@ class ComputeFutureTests(unittest.TestCase):
         self.assertEqual(future.result(), "ready")
 
 
+class IndependenceValidationTests(unittest.TestCase):
+    """Reading module globals (helpers, imports, constants) is fine -- the
+    compiler freezes them in. Mutating shared module state is what's rejected."""
+
+    def test_calling_a_module_helper_is_allowed(self):
+        from tandem.validator import validate_independence
+
+        def task(n):
+            return some_helper(n) + OFFSET  # noqa: F821 -- free reads are fine now
+
+        validate_independence(task)  # should not raise
+
+    def test_mutating_a_module_global_is_rejected(self):
+        from tandem.errors import TandemValidationError
+        from tandem.validator import validate_independence
+
+        def task(n):
+            accumulator += n  # noqa: F821 -- mutating a shared global is the error
+            return accumulator
+
+        with self.assertRaises(TandemValidationError):
+            validate_independence(task)
+
+
 if __name__ == "__main__":
     unittest.main()

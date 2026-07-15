@@ -1,21 +1,19 @@
 """
 Split-independence validator.
 
-A tandemed function must be independent: it may only read
-  1. its own parameters / locals derived from them
-  2. names declared tandem.immutable(...) in its defining module
-  3. builtins
+A tandem task should be independent: running it on one node must give the same
+answer as running it on any other. The compiler freezes the task's whole module
+into its WASM component, so a task may freely *read* module globals -- helper
+functions, imports, constants -- because every node runs the same frozen copy.
 
-Any other free-variable read (module globals, closure captures) is a
-violation. Assignment to an immutable name from inside a task is also a
-violation.
+The one thing that breaks independence is *writing* to a module global and
+expecting the change to be shared: each node has its own isolated copy, so the
+write goes nowhere the other nodes can see. That's what this validator flags.
+(Writing to a name declared `tandem.immutable(...)` is likewise an error.)
 
-This validator runs at decoration time (inside @tandem.compute and
-tandem.split) so violations surface immediately when the module is
-imported, not during a build or at first call. The compiler re-runs
-the same checks with full symbol resolution during `tandem build` --
-but this pass exists so users get fast feedback without invoking the
-compiler.
+This runs at decoration time (inside @tandem.compute and tandem.split) so
+violations surface immediately when the module is imported, rather than at build
+or first call.
 """
 
 from __future__ import annotations
@@ -186,11 +184,17 @@ def _parse_function_ast(func: Callable) -> ast.FunctionDef:
 
 def validate_independence(func: Callable) -> None:
     """
-    Validate that func only reads names that are parameters, locals,
-    builtins, or declared immutable in its defining module.
+    Check that a task doesn't try to mutate shared module-level state.
 
-    Raises TandemValidationError on the first violation, naming the
-    offending variable and line number.
+    The compiler freezes the task's whole module into its WASM component, so
+    *reading* module globals -- helper functions, imports, constants -- is
+    perfectly fine: every node runs the same frozen copy, so everyone sees the
+    same values. What doesn't make sense for a distributed task is *writing* to a
+    module global and expecting the change to be shared, because each node has
+    its own isolated copy. So that's the one thing we flag.
+
+    Raises TandemValidationError on the first write to a module global, naming
+    the offending variable and line number.
     """
     module_name = getattr(func, "__module__", "<unknown>")
     immutable_names = all_immutable_names(module_name)
@@ -201,7 +205,6 @@ def validate_independence(func: Callable) -> None:
 
     label = getattr(func, "__name__", "<function>")
 
-    # Writes first: more specific error than a plain free-read.
     for name, lineno in visitor.free_writes:
         if name in immutable_names:
             raise TandemValidationError(
@@ -210,20 +213,9 @@ def validate_independence(func: Callable) -> None:
             )
         raise TandemValidationError(
             f"In '{label}' (line {lineno}): "
-            f"global variable '{name}' cannot be modified inside a tandem task. "
-            f"Pass it as a parameter, or mark it with `{name} = tandem.immutable(...)` "
-            f"if it is truly constant."
-        )
-
-    for name, lineno in visitor.free_reads:
-        if name in immutable_names:
-            continue
-        raise TandemValidationError(
-            f"In '{label}' (line {lineno}): "
-            f"global variable '{name}' is not immutable. "
-            f"Tandem tasks may only read parameters, locals, or names declared "
-            f"with `{name} = tandem.immutable(...)`. "
-            f"Pass '{name}' as a parameter instead, or mark it immutable."
+            f"global variable '{name}' cannot be modified inside a tandem task -- "
+            f"each node runs its own frozen copy, so the change wouldn't be shared. "
+            f"Use a parameter and return the result instead."
         )
 
 
