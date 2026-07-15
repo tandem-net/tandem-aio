@@ -1,0 +1,122 @@
+"""Per-account resource usage: what an account is using, and against what limit.
+
+This is scaffolding. Today only compute (instruction fuel) is really measured;
+RAM, storage, CPU, and GPU are placeholders with clear limits, sitting behind
+the same interface so they can be filled in later without changing any callers
+or the `tandem usage` output.
+
+Limits are per user *account*. A user may hold several API keys, so usage is
+summed across all of a user's keys.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Callable
+
+from sqlalchemy import select
+
+from app.extensions import db
+from app.models import UserAPI
+from app.utils import quota
+
+# Per-account limits. Real enforcement comes later; for now these are just the
+# numbers `tandem usage` shows percentages against. They're deliberately simple
+# constants so they're easy to move to per-account config or a DB column later.
+ACCOUNT_INSTRUCTION_LIMIT = quota.QUOTA_DEFAULT_LIMIT  # fuel units, rolling 24h
+ACCOUNT_RAM_LIMIT_BYTES = 5 * 2**30                    # 5 GiB
+ACCOUNT_STORAGE_LIMIT_BYTES = 5 * 2**30                # 5 GiB
+ACCOUNT_CPU_LIMIT_CORES = 4                            # placeholder
+ACCOUNT_GPU_LIMIT_COUNT = 1                            # placeholder
+
+# `source` values: whether `used` is a real measurement or a not-yet-wired stub.
+MEASURED = "measured"
+PLACEHOLDER = "placeholder"
+
+
+@dataclass(frozen=True)
+class ResourceMetric:
+    """How much of one resource an account is using, and its ceiling.
+
+    `source` says whether `used` is a real measurement or a placeholder that
+    still needs wiring up, so `tandem usage` can be honest about which is which.
+    """
+
+    type: str
+    used: float
+    limit: float
+    unit: str
+    source: str
+
+    @property
+    def percent(self) -> float:
+        if self.limit <= 0:
+            return 0.0
+        return round(min(self.used / self.limit * 100.0, 100.0), 1)
+
+    def as_dict(self) -> dict:
+        return {
+            "type": self.type,
+            "used": self.used,
+            "limit": self.limit,
+            "unit": self.unit,
+            "percent": self.percent,
+            "source": self.source,
+        }
+
+
+def _account_api_keys(user_id: int) -> list[str]:
+    statement = select(UserAPI.api_key).where(UserAPI.user_id == user_id)
+    return list(db.session.scalars(statement).all())
+
+
+def _collect_instructions(user_id: int) -> ResourceMetric:
+    """Real: sum the rolling instruction usage across the account's API keys."""
+    used = 0
+    for api_key in _account_api_keys(user_id):
+        _, info = quota.check_quota(api_key)
+        used += int(info.get("used", 0))
+    return ResourceMetric(
+        type="instructions",
+        used=float(used),
+        limit=float(ACCOUNT_INSTRUCTION_LIMIT),
+        unit="fuel",
+        source=MEASURED,
+    )
+
+
+def _placeholder_collector(
+    resource_type: str, limit: float, unit: str
+) -> Callable[[int], ResourceMetric]:
+    """Build a collector that reports 0 used, clearly marked as a placeholder.
+
+    Swap one of these out for a real collector (same signature) once the metric
+    can actually be measured, and nothing else has to change.
+    """
+
+    def collect(user_id: int) -> ResourceMetric:
+        return ResourceMetric(
+            type=resource_type,
+            used=0.0,
+            limit=float(limit),
+            unit=unit,
+            source=PLACEHOLDER,
+        )
+
+    return collect
+
+
+# The registry. Add real collectors here as they get wired up; this order is the
+# order `tandem usage` prints them.
+_COLLECTORS: list[Callable[[int], ResourceMetric]] = [
+    _collect_instructions,
+    _placeholder_collector("ram", ACCOUNT_RAM_LIMIT_BYTES, "bytes"),
+    _placeholder_collector("storage", ACCOUNT_STORAGE_LIMIT_BYTES, "bytes"),
+    _placeholder_collector("cpu", ACCOUNT_CPU_LIMIT_CORES, "cores"),
+    _placeholder_collector("gpu", ACCOUNT_GPU_LIMIT_COUNT, "gpus"),
+]
+
+
+def usage_for_user(user_id: int) -> list[ResourceMetric]:
+    """Gather every resource metric for one account."""
+    return [collect(user_id) for collect in _COLLECTORS]

@@ -563,6 +563,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Show your login and whether the Tandem node is running.",
     )
 
+    usage_parser = subparsers.add_parser(
+        "usage",
+        help="Show how much of your account's resource limits you're using.",
+    )
+    _add_remote_options(usage_parser)
+
     node_parser = subparsers.add_parser(
         "node",
         help="Run and manage the background Tandem node on this machine.",
@@ -1018,6 +1024,60 @@ def _cmd_status(_args: argparse.Namespace) -> int:
     return 0
 
 
+def _fmt_amount(value, unit: str) -> str:
+    """Format a usage amount for humans: GiB for bytes, commas for fuel."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return f"{value} {unit}"
+    if unit == "bytes":
+        return f"{number / (2 ** 30):.2f} GiB"
+    if unit == "fuel":
+        return f"{int(number):,} fuel"
+    return f"{number:g} {unit}"
+
+
+def _print_usage_bar(metric: dict) -> None:
+    resource_type = str(metric.get("type", "?"))
+    percent = float(metric.get("percent", 0.0) or 0.0)
+    unit = str(metric.get("unit", ""))
+    source = str(metric.get("source", ""))
+
+    filled = max(0, min(20, int(round(percent / 100.0 * 20))))
+    bar = "#" * filled + "-" * (20 - filled)
+
+    used = _fmt_amount(metric.get("used", 0), unit)
+    limit = _fmt_amount(metric.get("limit", 0), unit)
+    tag = f"  {Colors.YELLOW}(placeholder){Colors.RESET}" if source == "placeholder" else ""
+
+    print(f"  {resource_type:<12} [{bar}] {percent:5.1f}%   {used} / {limit}{tag}")
+
+
+def _cmd_usage(args: argparse.Namespace) -> int:
+    from .remote import fetch_usage
+
+    payload = fetch_usage(
+        server_url=getattr(args, "server_url", None),
+        api_key=getattr(args, "api_key", None),
+    )
+
+    resources = payload.get("resources", [])
+    if not resources:
+        print("No usage information was returned.")
+        return 0
+
+    print("Account resource usage:")
+    print("")
+    for metric in resources:
+        _print_usage_bar(metric)
+    print("")
+    print(
+        f"{Colors.YELLOW}(placeholder){Colors.RESET} metrics aren't measured yet "
+        "-- the limit is shown but usage is a stub."
+    )
+    return 0
+
+
 def _registration_failure_hint(message: str) -> str | None:
     """A concrete next step for the specific registration failures we know how
     to fix. Returns None for anything else, so we don't guess at unrelated
@@ -1342,6 +1402,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _cmd_clean(args)
         if args.command == "status":
             return _cmd_status(args)
+        if args.command == "usage":
+            return _cmd_usage(args)
         if args.command == "node":
             if args.node_command == "start":
                 return _cmd_node_start(args)

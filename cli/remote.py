@@ -244,3 +244,26 @@ def fetch_job_results(
         raise RuntimeError("Results response was not valid JSON.")
 
     return response.status_code, payload
+
+
+def fetch_usage(
+    *,
+    server_url: str | None = None,
+    api_key: str | None = None,
+) -> dict[str, Any]:
+    """Fetch the account's resource usage from the server."""
+    resolved_server_url = _resolve_server_url(server_url)
+    resolved_api_key = _resolve_api_key(api_key)
+    response = requests.get(
+        f"{resolved_server_url}/api/v1/usage",
+        headers=_headers(resolved_api_key),
+        timeout=_POLL_TIMEOUT_SECONDS,
+    )
+
+    if response.status_code != 200:
+        _raise_response_error(response)
+
+    payload = _response_payload(response)
+    if not isinstance(payload, dict):
+        raise RuntimeError("Usage response was not valid JSON.")
+    return payload
