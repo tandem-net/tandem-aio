@@ -79,6 +79,13 @@ async fn main() {
         health::health_loop(health_cfg).await;
     });
 
+    // Also run the web-hosting side: claim serve deployments and proxy their
+    // traffic. It shares the node's identity and only talks out to the server.
+    let serve_cfg = cfg.clone();
+    tokio::spawn(async move {
+        serve::serve_loop(serve_cfg).await;
+    });
+
     eprintln!("[node] health loop started (every 3 s)");
     eprintln!("[node] entering task claim loop…");
 
