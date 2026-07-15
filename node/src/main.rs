@@ -3,6 +3,7 @@ mod crypto;
 mod executor;
 mod health;
 mod registration;
+mod sandbox;
 mod state;
 mod worker;
 

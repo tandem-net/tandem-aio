@@ -1290,6 +1290,7 @@ dependencies = [
  "aes-gcm",
  "base64 0.22.1",
  "dotenvy",
+ "libc",
  "rand 0.8.6",
  "reqwest",
  "rsa",
