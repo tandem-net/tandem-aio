@@ -333,10 +333,37 @@ def _find_disallowed_calls(node: ast.AST) -> list[tuple[ast.Call, str]]:
     return violations
 
 
+def _immutable_names_for_module(module: ModuleType) -> frozenset[str]:
+    """Names the SDK's immutable registry recorded for this module.
+
+    ``tandem.Immutable(...)`` registers each wrapped module-level constant at
+    import time, keyed by module name, and the SDK exposes them through
+    ``all_immutable_names`` precisely so this build-time scanner can tell which
+    globals a task is allowed to read. We consult that registry instead of
+    re-deriving it from the AST so every construction form -- ``Immutable(...)``,
+    ``Immutable[T](...)``, ``Immutable.of(...)``, or an explicit
+    ``register_immutable_name(...)`` -- is honoured with one source of truth.
+
+    The module has already been imported by discovery, so the registry is
+    populated by the time we get here. If the SDK can't be imported (e.g. an
+    isolated unit test hands us a hand-built module), we degrade to "nothing is
+    registered" and let the caller fall back to syntactic detection.
+    """
+    try:
+        from tandem.immutable import all_immutable_names
+    except Exception:
+        return frozenset()
+    try:
+        return frozenset(all_immutable_names(getattr(module, "__name__", "")))
+    except Exception:
+        return frozenset()
+
+
 class _AnalysisContext:
     def __init__(self, module: ModuleType, index: ModuleIndex) -> None:
         self._module = module
         self._index = index
+        self._immutable_names = _immutable_names_for_module(module)
         self._helper_cache: dict[str, tuple[Diagnostic, ...]] = {}
         self._helper_stack: set[str] = set()
 
@@ -406,7 +433,7 @@ class _AnalysisContext:
                     message=(
                         f"Task captures outer-scope value `{name}`. Tandem tasks must not depend "
                         "on closure state unless the value is moved to a module-level "
-                        "`tandem.immutable(...)` or `tandem.constant(...)` binding."
+                        "`tandem.Immutable(...)` binding."
                     ),
                     file=str(self._index.path),
                     line=line,
@@ -418,15 +445,20 @@ class _AnalysisContext:
         for name, value in closure_vars.globals.items():
             if name in self._index.module_assignments:
                 assignment = self._index.module_assignments[name]
-                if assignment.kind not in {"immutable", "constant"}:
+                marked_immutable = (
+                    assignment.kind in {"immutable", "constant"}
+                    or name in self._immutable_names
+                )
+                if not marked_immutable:
                     line, column = _find_name_location(node, name)
                     diagnostics.append(
                         Diagnostic(
                             level="error",
                             code="TANDEM002",
                             message=(
-                                f"Task reads module-level value `{name}` which is not marked with "
-                                "`tandem.immutable(...)` or `tandem.constant(...)`."
+                                f"Task reads module-level value `{name}` which is not marked "
+                                "immutable. Wrap it in a module-level `tandem.Immutable(...)` "
+                                "binding so every node freezes in the same value."
                             ),
                             file=str(self._index.path),
                             line=line,
