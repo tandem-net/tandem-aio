@@ -1,0 +1,6 @@
+[project]
+name = "compute-example"
+runtime = "python"
+version = "0.1.0"
+entry = "compute_example.py"
+output_dir = ".tandem_build/compute-example"
