@@ -71,33 +71,20 @@ def _require_node_auth():
 
 
 def _resolve_registration_identity():
-    """Work out whether the caller may register a new node, and who they are.
+    """Decide if the caller may register a node, and who owns it.
 
-    There are two ways to be allowed in, checked in this order:
-
-      1. A valid user API key. Anyone who has logged in through the CLI already
-         has one, so `tandem node start` just works -- no extra secret to copy
-         around. When this is how they got in, we also learn which user owns the
-         node.
-      2. The server's shared registration token, if the operator configured one.
-         This is the escape hatch for headless nodes that aren't tied to a user
-         account.
-
-    Returns a (api_client, error) pair. On success `error` is None and
-    `api_client` is the owning user (or None for the anonymous token path). On
-    failure `error` is a ready-to-return Flask (response, status) tuple.
+    A valid user API key is enough (and tells us the owner); otherwise we fall
+    back to the shared registration token for headless nodes. Returns
+    (api_client, error): on success error is None, on failure it's a Flask
+    (response, status) tuple.
     """
     provided = _extract_bearer_token()
 
-    # Path 1: a real user's API key is all it takes.
     if provided:
         api_client = get_api_client(provided)
         if api_client is not None:
             return api_client, None
 
-    # Path 2: fall back to the shared registration token. If the server isn't
-    # gating registration at all (no token configured), we leave the door open,
-    # same as before.
     expected = (current_app.config.get("NODE_REGISTRATION_TOKEN") or "").strip()
     if not expected:
         return None, None
@@ -168,8 +155,8 @@ def register():
         "supports_wasm": _as_capability_flag(data.get("supports_wasm")),
     }
 
-    # If they registered by logging in, remember whose node this is. Nodes that
-    # come in on the shared token stay anonymous (no owner to record).
+    # Nodes that registered with an API key remember their owner; token-based
+    # ones stay anonymous.
     if owner is not None:
         metrics["owner_user_id"] = str(owner.user_id)
 

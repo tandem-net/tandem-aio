@@ -165,12 +165,8 @@ def register_node_now(server_url: str, *, timeout: float = 120.0) -> Registratio
     env = build_node_env(server_url)
     env["TANDEM_NODE_REGISTER_ONLY"] = "1"
 
-    # The seamless path: if you're logged in, register this machine under your
-    # account using the API key we already saved at login -- no registration
-    # token to hunt down. The node sends it as its bearer token, and the server
-    # accepts a valid user API key just like it accepts the shared token. We only
-    # need it for this one-shot registration, so it goes here rather than into
-    # the long-running node's environment.
+    # If you're logged in, register under your account with the saved API key.
+    # Only needed for this one-shot registration, so it's not in build_node_env.
     api_key = get_api_key()
     if api_key:
         env["TANDEM_NODE_AUTH_TOKEN"] = api_key

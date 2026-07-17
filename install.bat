@@ -94,13 +94,9 @@ if not exist "%BIN_DIR%" mkdir "%BIN_DIR%"
 echo.
 echo Tandem CLI installed.
 
-REM 5. You normally don't need a registration token at all: once you run
-REM `tandem auth login`, your node registers under your account automatically.
-REM But as a convenience for the all-on-one-machine dev setup, if this repo's
-REM server has already generated a token we quietly save it, so a headless
-REM `tandem node start` works even before you log in. We check, in order: the
-REM environment, this repo's .env file, and the server's auto-generated token.
-REM If none exist, we skip this silently -- logging in is all you need.
+REM 5. Logging in is all a node needs. As a convenience for the all-on-one-machine
+REM dev setup, if this repo's server already has a token we save it as a fallback.
+REM We check the environment, this repo's .env, then the server's generated token.
 set "REGISTRATION_TOKEN=%TANDEM_NODE_REGISTRATION_TOKEN%"
 set "TOKEN_SOURCE=the environment"
 if not defined REGISTRATION_TOKEN if exist "%REPO_ROOT%\.env" (
@@ -114,8 +110,7 @@ if not defined REGISTRATION_TOKEN if exist "%REPO_ROOT%\server\keys\node_registr
 
 if defined REGISTRATION_TOKEN (
   call "%BIN_DIR%\tandem.bat" settings set-registration-token "%REGISTRATION_TOKEN%" >nul
-  echo Found this repo's server token ^(%TOKEN_SOURCE%^) and saved it as a fallback.
-  echo Logging in still works too, and takes precedence -- either way you're set.
+  echo Saved this repo's server token ^(%TOKEN_SOURCE%^) as a fallback.
   echo.
 )
 
@@ -188,7 +183,6 @@ echo   1. Log in:            tandem auth login
 echo   2. Start your node:   tandem node start
 echo   3. Check on it:       tandem status
 echo.
-echo That's it -- no registration token to copy. Logging in is all a node needs.
 echo Your node needs to be running before you can deploy or start a job.
 
 endlocal

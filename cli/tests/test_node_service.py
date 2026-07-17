@@ -151,9 +151,7 @@ class RegistrationTokenResolutionTests(unittest.TestCase):
 
 
 class RegistrationAuthTokenTests(unittest.TestCase):
-    """Being logged in should be all it takes to register: register_node_now hands
-    the node your saved API key as TANDEM_NODE_AUTH_TOKEN, which the server accepts
-    the same way it accepts a shared registration token -- no token to copy."""
+    """register_node_now passes the saved API key as TANDEM_NODE_AUTH_TOKEN."""
 
     def _capture_register_env(self, *, api_key, registration_token) -> dict:
         with tempfile.TemporaryDirectory() as tmp:

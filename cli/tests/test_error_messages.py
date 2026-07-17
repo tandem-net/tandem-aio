@@ -80,10 +80,9 @@ class RegistrationFailureHintTests(unittest.TestCase):
             'registration failed (401 Unauthorized): {"error":"Missing node registration bearer token"}'
         )
         self.assertIsNotNone(hint)
-        # Logging in is the seamless path, so it should come first...
+        # Login comes first, the token fallback second.
         self.assertIn("tandem auth login", hint)
         self.assertLess(hint.index("tandem auth login"), hint.index("set-registration-token"))
-        # ...and the shared-token fallback is still spelled out for headless nodes.
         self.assertIn("tandem settings set-registration-token", hint)
 
     def test_invalid_token_message_gets_a_hint(self) -> None:

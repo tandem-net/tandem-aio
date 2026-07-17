@@ -84,14 +84,9 @@ echo "Tandem CLI installed."
 echo "Linked: $BIN_DIR/tandem -> $VENV_DIR/bin/tandem"
 echo ""
 
-# 6. You normally don't need a registration token at all: once you run
-# `tandem auth login`, your node registers under your account automatically.
-# But as a convenience for the all-on-one-machine dev setup, if this repo's
-# server has already generated a token we quietly save it, so a headless
-# `tandem node start` works even before you log in. We check, in order: the
-# environment, this repo's .env file, and the server's auto-generated token
-# (server/keys/node_registration_token.txt). If none exist, we skip this
-# silently -- logging in is all you need.
+# 6. Logging in is all a node needs. As a convenience for the all-on-one-machine
+# dev setup, if this repo's server already has a token we save it as a fallback.
+# We check the environment, this repo's .env, then the server's generated token.
 REGISTRATION_TOKEN="${TANDEM_NODE_REGISTRATION_TOKEN:-}"
 TOKEN_SOURCE="the environment"
 if [ -z "$REGISTRATION_TOKEN" ] && [ -f "$REPO_ROOT/.env" ]; then
@@ -105,8 +100,7 @@ fi
 
 if [ -n "$REGISTRATION_TOKEN" ]; then
   "$BIN_DIR/tandem" settings set-registration-token "$REGISTRATION_TOKEN" >/dev/null
-  echo "Found this repo's server token ($TOKEN_SOURCE) and saved it as a fallback."
-  echo "Logging in still works too, and takes precedence -- either way you're set."
+  echo "Saved this repo's server token ($TOKEN_SOURCE) as a fallback."
   echo ""
 fi
 
@@ -272,10 +266,9 @@ echo ""
 echo "Next steps:"
 echo "  1. Log in:            tandem auth login"
 if [ "$NODE_INSTALLED" = "1" ]; then
-  echo "  2. Start your node:   tandem node start        (or run it in the background: tandem node enable)"
+  echo "  2. Start your node:   tandem node start        (or in the background: tandem node enable)"
   echo "  3. Check on it:       tandem status"
   echo ""
-  echo "That's it -- no registration token to copy. Logging in is all a node needs."
   echo "Your node needs to be running before you can deploy or start a job."
 else
   echo "  2. Install the node (see the note above), then: tandem node start"

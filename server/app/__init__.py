@@ -38,10 +38,8 @@ def _apply_runtime_schema_migrations() -> None:
 def _resolve_node_registration_token(server_dir: pathlib.Path) -> str:
     """The bearer token a node must send to POST /nodes/register.
 
-    An explicit TANDEM_NODE_REGISTRATION_TOKEN always wins. Otherwise we reuse
-    (or generate once) a random token on disk -- the same idea as the JWT
-    keypair in blueprints/auth.py -- so the server is never silently open to
-    registration and nobody has to invent and copy a secret by hand."""
+    An explicit TANDEM_NODE_REGISTRATION_TOKEN wins. Otherwise we reuse or
+    generate a random token on disk, so registration is never open by default."""
     env_token = os.environ.get("TANDEM_NODE_REGISTRATION_TOKEN")
     if env_token:
         return env_token
@@ -55,19 +53,9 @@ def _resolve_node_registration_token(server_dir: pathlib.Path) -> str:
     token_path.write_text(token, encoding="utf-8")
     token_path.chmod(0o600)
 
-    print("")
-    print("=" * 72)
-    print("No TANDEM_NODE_REGISTRATION_TOKEN set -- generated a random one instead.")
-    print(f"Saved to {token_path} (reused on every restart from here on).")
-    print("")
-    print("You usually won't need this: anyone who runs `tandem auth login` can")
-    print("register a node under their own account, no token required.")
-    print("")
-    print("It's only for headless nodes with no user account. To point one at this")
-    print("server, run there:")
-    print(f"  tandem settings set-registration-token {token}")
-    print("=" * 72)
-    print("")
+    print(f"\nGenerated a node registration token, saved to {token_path}.")
+    print("Logged-in users don't need it. For a headless node with no account, run:")
+    print(f"  tandem settings set-registration-token {token}\n")
 
     return token
 

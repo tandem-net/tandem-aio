@@ -3,9 +3,7 @@ import tempfile
 import unittest
 
 os.environ["TANDEM_DISABLE_SWEEPER"] = "1"
-# The server always has a shared token configured (it generates one if unset), so
-# pin a known value here. The whole point of these tests is that a logged-in user
-# can register *without* touching it.
+# Pin a known shared token; these tests prove a logged-in user registers without it.
 os.environ.setdefault("TANDEM_NODE_REGISTRATION_TOKEN", "shared-token")
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/15")
 _tmp_db = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
@@ -18,10 +16,8 @@ from app.models import User, UserAPI  # noqa: E402
 
 
 class NodeRegistrationAuthTests(unittest.TestCase):
-    """Registering a node should just work once you're logged in: a valid user
-    API key is accepted the same way the shared registration token is. The token
-    stays as a fallback for headless nodes, and bogus/absent credentials are
-    still refused."""
+    """A valid API key registers a node; the shared token still works for headless
+    nodes; bogus or missing credentials are refused."""
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -29,9 +25,7 @@ class NodeRegistrationAuthTests(unittest.TestCase):
         cls.ctx = cls.app.app_context()
         cls.ctx.push()
         cls.client = cls.app.test_client()
-        # Read the token the app actually resolved rather than assuming our own
-        # env var won -- when the whole suite runs together, another module's
-        # setdefault may have set TANDEM_NODE_REGISTRATION_TOKEN first.
+        # Read the resolved token; another test module may have set it first.
         cls.shared_token = cls.app.config["NODE_REGISTRATION_TOKEN"]
 
     @classmethod

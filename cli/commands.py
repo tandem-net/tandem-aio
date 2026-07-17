@@ -448,7 +448,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     settings_set_registration_token_parser = settings_subparsers.add_parser(
         "set-registration-token",
-        help="Only for headless nodes with no account. If you're logged in, skip this -- `tandem node start` registers you automatically.",
+        help="For headless nodes only. Logged-in users don't need this.",
     )
     settings_set_registration_token_parser.add_argument(
         "registration_token",
@@ -853,10 +853,8 @@ def _describe_server_url() -> None:
 
 
 def _describe_registration_token() -> None:
-    """Print whether a node registration token is currently in effect, and where
-    it came from. Once you're logged in you almost never need one -- the node
-    registers under your account automatically -- so "nothing set" is the normal,
-    healthy case. This is here for headless nodes that use a shared token."""
+    """Print the node registration token in effect and where it came from. Only
+    headless nodes need one; logged-in users register under their account."""
     stored = get_stored_registration_token()
     if stored:
         print(f"\nNode registration token: {mask_secret(stored)}")
@@ -869,10 +867,8 @@ def _describe_registration_token() -> None:
         print("Source:                  TANDEM_NODE_REGISTRATION_TOKEN environment variable")
         return
 
-    print("\nNo node registration token saved -- and you probably don't need one.")
-    print("If you're logged in, `tandem node start` registers this machine under")
-    print("your account on its own. A token is only for headless nodes with no")
-    print("account; save one with `tandem settings set-registration-token <token>`.")
+    print("\nNo node registration token saved. If you're logged in you don't need one.")
+    print("Headless nodes: tandem settings set-registration-token <token>")
 
 
 def _cmd_settings_show(_args: argparse.Namespace) -> int:
@@ -1032,10 +1028,7 @@ def _print_node_status() -> None:
         print("  Start it with:  tandem node start")
 
     if not status.node_id and load_auth_session() is None and not resolve_registration_token():
-        print(
-            "  Not logged in yet -- run `tandem auth login`, then `tandem node start` "
-            "registers this machine under your account automatically."
-        )
+        print("  Not logged in. Run `tandem auth login`, then `tandem node start`.")
 
 
 def _cmd_status(_args: argparse.Namespace) -> int:
@@ -1200,19 +1193,12 @@ def _cmd_serve(args: argparse.Namespace) -> int:
 
 
 def _registration_failure_hint(message: str) -> str | None:
-    """A concrete next step for the specific registration failures we know how
-    to fix. Returns None for anything else, so we don't guess at unrelated
-    errors and print a hint that doesn't actually apply."""
+    """A next step for registration failures we recognize, or None otherwise."""
     if "registration bearer token" in message or "registration token" in message:
         return (
-            "The server wouldn't let this machine register. The easy fix is to log "
-            "in -- then your node registers under your account, no token needed:\n"
+            "Log in and this machine registers under your account:\n"
             "  tandem auth login\n"
-            "\n"
-            "If instead this is a headless node using a shared registration token, "
-            "find the token (check the server's startup log, or "
-            "server/keys/node_registration_token.txt if you run it yourself) and "
-            "save it:\n"
+            "For a headless node, save the server's shared token instead:\n"
             "  tandem settings set-registration-token <token>"
         )
     return None
@@ -1224,17 +1210,10 @@ def _register_if_needed(server_url: str) -> int | None:
     if is_registered():
         return None
 
-    # Registering needs proof you're allowed to: normally that's just being
-    # logged in (we send your API key for you), but a saved registration token
-    # works too for headless nodes. If we have neither, say so plainly instead
-    # of letting the node come back with a cryptic 401.
+    # Registering needs either a login or a saved token. Catch the common case
+    # early instead of letting the node fail with a 401.
     if load_auth_session() is None and not resolve_registration_token():
-        print(
-            f"{Colors.YELLOW}Log in first so this machine can register as your node:{Colors.RESET}",
-            file=sys.stderr,
-        )
-        print("  tandem auth login", file=sys.stderr)
-        print("Then run `tandem node start` again.", file=sys.stderr)
+        print(f"{Colors.YELLOW}Log in first:{Colors.RESET}  tandem auth login", file=sys.stderr)
         return 1
 
     print(f"Registering this machine as a Tandem node on {server_url}...")
