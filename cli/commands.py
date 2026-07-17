@@ -4,6 +4,7 @@ import argparse
 import base64
 import json
 import secrets
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -574,10 +575,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Host a web app on your Tandem nodes, behind the load balancer.",
     )
     serve_parser.add_argument(
-        "config_path",
-        nargs="?",
-        default=os.environ.get("TANDEM_CONFIG_PATH", "tandem.toml"),
-        help="Path to the Tandem TOML config. Defaults to tandem.toml.",
+        "serve_args",
+        nargs="*",
+        help=(
+            "A tandem.toml to deploy (the default), or `stop <pid>` to stop a "
+            "running deployment, or `list` to show your deployments."
+        ),
     )
     serve_parser.add_argument(
         "--start",
@@ -1102,11 +1105,61 @@ def _cmd_usage(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_serve_list(args: argparse.Namespace) -> int:
+    from .remote import serve_list
+
+    data = serve_list(
+        server_url=getattr(args, "server_url", None),
+        api_key=getattr(args, "api_key", None),
+    )
+    deployments = data.get("deployments") or []
+    if not deployments:
+        print("No serve deployments.")
+        return 0
+    for dep in deployments:
+        nodes = dep.get("serving_nodes") or []
+        where = ", ".join(nodes) if nodes else "no node serving"
+        status = dep.get("status", "running")
+        print(f"{dep.get('pid')}  {dep.get('name', '')}  [{status}]  ({where})")
+        print(f"    {dep.get('url', '')}")
+    return 0
+
+
+def _cmd_serve_stop(args: argparse.Namespace, pid: str) -> int:
+    from .remote import serve_stop
+
+    serve_stop(
+        pid=pid,
+        server_url=getattr(args, "server_url", None),
+        api_key=getattr(args, "api_key", None),
+    )
+    print(f"Stopped serve deployment {pid}.")
+    return 0
+
+
 def _cmd_serve(args: argparse.Namespace) -> int:
     from .app_config import load_project_config
     from .remote import serve_deploy
 
-    config = load_project_config(args.config_path)
+    # `serve` doubles as a small management command:
+    #   tandem serve [config.toml]   -> deploy (default)
+    #   tandem serve stop <pid>      -> stop a running deployment
+    #   tandem serve list           -> show your deployments
+    serve_args = list(getattr(args, "serve_args", None) or [])
+    verb = serve_args[0] if serve_args else None
+
+    if verb == "list":
+        return _cmd_serve_list(args)
+    if verb == "stop":
+        if len(serve_args) < 2:
+            print("Usage: tandem serve stop <pid>", file=sys.stderr)
+            return 1
+        return _cmd_serve_stop(args, serve_args[1])
+
+    config_path = serve_args[0] if serve_args else os.environ.get(
+        "TANDEM_CONFIG_PATH", "tandem.toml"
+    )
+    config = load_project_config(config_path)
     start_command = getattr(args, "start", None) or config.build_start
     if not start_command:
         print(
@@ -1115,6 +1168,18 @@ def _cmd_serve(args: argparse.Namespace) -> int:
         )
         return 1
 
+    # If the project has an install step, run it now. Your nodes run the app
+    # with no network, so anything it needs from pip (Flask, requests, ...) has
+    # to be installed into the project folder here first and shipped inside the
+    # bundle. A typical [build] install is something like:
+    #   pip install flask --target libs
+    if config.build_install:
+        print(f"Installing dependencies: {config.build_install}")
+        install = subprocess.run(config.build_install, shell=True, cwd=str(config.project_root))
+        if install.returncode != 0:
+            print("Dependency install failed, so the app was not deployed.", file=sys.stderr)
+            return 1
+
     result = serve_deploy(
         project_root=str(config.project_root),
         start_command=start_command,
@@ -1122,6 +1187,8 @@ def _cmd_serve(args: argparse.Namespace) -> int:
         name=config.name,
         server_url=getattr(args, "server_url", None),
         api_key=getattr(args, "api_key", None),
+        sdk_path=config.sdk_path,
+        sdk_import_name=config.sdk_import_name,
     )
 
     pid = result.get("pid", "?")

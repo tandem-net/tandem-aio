@@ -63,6 +63,7 @@ def create_serve_deployment(pid: str, *, start_command: list[str], replicas: int
             "start_command": json.dumps(start_command),
             "replicas": str(replicas),
             "api_key": api_key,
+            "status": "running",
             "created_at": str(time.time()),
         },
     )
@@ -77,6 +78,33 @@ def get_serve_deployment(pid: str) -> dict | None:
     return {decode_value(k): decode_value(v) for k, v in raw.items()}
 
 
+def all_deployment_ids() -> list[str]:
+    return [decode_value(m) for m in redis_client.smembers(_ALL_DEPLOYMENTS)]
+
+
+def deployment_active(pid: str) -> bool:
+    """A deployment the nodes should still be running: it exists and hasn't been
+    marked failed. Removed deployments (deleted hash) are inactive too."""
+    meta = get_serve_deployment(pid)
+    return bool(meta) and meta.get("status", "running") == "running"
+
+
+def mark_failed(pid: str) -> None:
+    """A node couldn't start this app after several tries. Stop handing it out so
+    it doesn't churn the assignment queue forever."""
+    if redis_client.exists(_deploy_key(pid)):
+        redis_client.hset(_deploy_key(pid), "status", "failed")
+
+
+def remove_deployment(pid: str) -> None:
+    """Forget a deployment entirely (user asked to stop it). Nodes serving it
+    learn it's gone via `/nodes/serve/next` and shut their copy down."""
+    redis_client.srem(_ALL_DEPLOYMENTS, pid)
+    redis_client.delete(_deploy_key(pid))
+    redis_client.delete(_serving_nodes_key(pid))
+    redis_client.delete(_pending_key(pid))
+
+
 def current_serving_node_ids(pid: str) -> set[str]:
     return {decode_value(m) for m in redis_client.zrange(_serving_nodes_key(pid), 0, -1)}
 
@@ -86,6 +114,10 @@ def assign_nodes(pid: str) -> None:
     already serving it, by pushing the pid onto each node's serve queue."""
     meta = get_serve_deployment(pid)
     if not meta:
+        return
+    # Don't re-hand-out a deployment that's been marked failed -- that's what
+    # kept a broken app churning the node's serve queue forever.
+    if meta.get("status", "running") != "running":
         return
     replicas = int(meta.get("replicas", 1))
     already = current_serving_node_ids(pid)

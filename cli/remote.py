@@ -288,6 +288,8 @@ def serve_deploy(
     name: str,
     server_url: str | None = None,
     api_key: str | None = None,
+    sdk_path: Any = None,
+    sdk_import_name: str = "tandem",
 ) -> dict[str, Any]:
     """Tar the project and hand it to the server to host on the nodes."""
     import io
@@ -309,6 +311,14 @@ def serve_deploy(
     buffer = io.BytesIO()
     with tarfile.open(fileobj=buffer, mode="w") as tar:
         tar.add(str(pathlib.Path(project_root)), arcname=".", filter=_filter)
+        # The serve sandbox launches the app with a bare `python3`, so bundle the
+        # SDK package next to the app (mirroring what `tandem build` stages).
+        # Without it the app's `import tandem` fails with ModuleNotFoundError on
+        # the node.
+        if sdk_path is not None:
+            sdk_package = pathlib.Path(sdk_path) / sdk_import_name
+            if sdk_package.is_dir():
+                tar.add(str(sdk_package), arcname=sdk_import_name, filter=_filter)
     buffer.seek(0)
 
     response = requests.post(
@@ -330,3 +340,35 @@ def serve_deploy(
     if not isinstance(payload, dict):
         raise RuntimeError("Serve deploy response was not valid JSON.")
     return payload
+
+
+def serve_list(*, server_url: str | None = None, api_key: str | None = None) -> dict[str, Any]:
+    """List the caller's serve deployments."""
+    resolved_server_url = _resolve_server_url(server_url)
+    resolved_api_key = _resolve_api_key(api_key)
+    response = requests.get(
+        f"{resolved_server_url}/serve",
+        headers=_headers(resolved_api_key),
+        timeout=30,
+    )
+    if response.status_code != 200:
+        _raise_response_error(response)
+    payload = _response_payload(response)
+    return payload if isinstance(payload, dict) else {"deployments": []}
+
+
+def serve_stop(
+    *, pid: str, server_url: str | None = None, api_key: str | None = None
+) -> dict[str, Any]:
+    """Stop hosting a serve deployment and forget it."""
+    resolved_server_url = _resolve_server_url(server_url)
+    resolved_api_key = _resolve_api_key(api_key)
+    response = requests.delete(
+        f"{resolved_server_url}/serve/{pid}",
+        headers=_headers(resolved_api_key),
+        timeout=30,
+    )
+    if response.status_code != 200:
+        _raise_response_error(response)
+    payload = _response_payload(response)
+    return payload if isinstance(payload, dict) else {"pid": pid}

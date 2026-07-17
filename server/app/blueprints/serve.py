@@ -17,7 +17,7 @@ from app.blueprints.nodes import _require_node_auth
 from app.extensions import db
 from app.models import Deployment
 from app.utils import serve_queue
-from app.utils.auth import require_user_api_key
+from app.utils.auth import ensure_deployment_access, require_user_api_key
 from app.utils.task_queue import storage_root
 
 serve_bp = Blueprint("serve", __name__)
@@ -102,6 +102,9 @@ def nodes_next():
     """A serving node long-polls for the next request across its deployments.
 
     The same call doubles as the node's "still serving" heartbeat for each pid.
+    We only heartbeat/serve deployments that are still active; any the node lists
+    that we've since removed or marked failed come back in `stop` so the node
+    shuts its copy down.
     """
     node_id, _node, error = _require_node_auth()
     if error:
@@ -109,15 +112,94 @@ def nodes_next():
 
     data = request.get_json(silent=True) or {}
     pids = [str(p) for p in (data.get("pids") or [])]
+
+    active: list[str] = []
+    stop: list[str] = []
     for pid in pids:
-        serve_queue.mark_serving(pid, node_id)
+        if serve_queue.deployment_active(pid):
+            active.append(pid)
+            serve_queue.mark_serving(pid, node_id)
+        else:
+            stop.append(pid)
 
-    claimed = serve_queue.claim_request(pids, timeout=_POLL_TIMEOUT_SECONDS)
-    if claimed is None:
+    claimed = serve_queue.claim_request(active, timeout=_POLL_TIMEOUT_SECONDS)
+    request_obj = None
+    if claimed is not None:
+        req_id, req = claimed
+        request_obj = {"req_id": req_id, **req}
+
+    # Nothing to do and nothing to stop -> plain 204 (keeps older nodes happy).
+    if request_obj is None and not stop:
         return ("", 204)
+    return jsonify({"request": request_obj, "stop": stop})
 
-    req_id, req = claimed
-    return jsonify({"req_id": req_id, **req})
+
+@serve_bp.route("/nodes/serve/<pid>/failed", methods=["POST"])
+def nodes_failed(pid):
+    """A node reports it couldn't start this deployment. Mark it failed so it
+    stops being re-assigned (otherwise a broken app churns forever)."""
+    _node_id, _node, error = _require_node_auth()
+    if error:
+        return error
+    serve_queue.mark_failed(pid)
+    return jsonify({"ok": True})
+
+
+@serve_bp.route("/serve", methods=["GET"])
+def serve_list():
+    """List the caller's serve deployments and where they're running."""
+    api_client, error = require_user_api_key()
+    if error:
+        return error
+    assert api_client is not None
+
+    deployments = []
+    for pid in serve_queue.all_deployment_ids():
+        row = Deployment.query.filter_by(pid=pid).first()
+        if not row or row.api_key != api_client.api_key:
+            continue
+        meta = serve_queue.get_serve_deployment(pid) or {}
+        deployments.append(
+            {
+                "pid": pid,
+                "name": row.name,
+                "status": meta.get("status", "running"),
+                "replicas": meta.get("replicas"),
+                "serving_nodes": serve_queue.healthy_serving_node_ids(pid),
+                "url": f"/app/{pid}/",
+            }
+        )
+    return jsonify({"deployments": deployments})
+
+
+@serve_bp.route("/serve/<pid>", methods=["DELETE"])
+def serve_remove(pid):
+    """Stop hosting a deployment and forget it. Idempotent."""
+    api_client, error = require_user_api_key()
+    if error:
+        return error
+    assert api_client is not None
+
+    row = Deployment.query.filter_by(pid=pid).first()
+    if row is not None:
+        access_error = ensure_deployment_access(api_client, row)
+        if access_error:
+            return access_error
+
+    serve_queue.remove_deployment(pid)
+
+    bundle_path = _bundle_path(pid)
+    try:
+        if bundle_path.exists():
+            bundle_path.unlink()
+    except OSError:
+        pass
+
+    if row is not None:
+        db.session.delete(row)
+        db.session.commit()
+
+    return jsonify({"ok": True, "pid": pid})
 
 
 @serve_bp.route("/nodes/serve/response/<req_id>", methods=["POST"])
