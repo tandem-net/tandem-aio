@@ -4,7 +4,8 @@ Tandem lets you write normal Python, mark the parts you want to run across your
 machines, and then run them. Those parts can run as one-off compute jobs or as a
 hosted web app. This is a quick guide to the SDK and the `tandem` commands.
 
-For runnable examples, see [examples/](examples/).
+For a deeper walkthrough with a use case and example for each part of the SDK,
+see [GUIDE.md](GUIDE.md). For runnable examples, see [examples/](examples/).
 
 ## Install
 
@@ -61,6 +62,9 @@ A few things to know:
   `TandemValidationError`. Pass data in as arguments and return a result instead.
 
 ## The SDK, piece by piece
+
+Here's the whole surface at a glance. [GUIDE.md](GUIDE.md) covers each one with a
+use case and a worked example.
 
 | Thing | What it does |
 |---|---|
