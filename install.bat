@@ -47,6 +47,27 @@ if not exist "%VENV_DIR%\Scripts\python.exe" (
   )
 ) else (
   echo Reusing existing environment at %VENV_DIR%
+  REM Older venvs (and some pre-release Python installs, like the 3.14 build
+  REM that ships without ensurepip by default) end up without pip. Probe
+  REM for it, try `ensurepip --upgrade` to repair in place, and only nuke
+  REM + recreate the venv as a last resort -- otherwise users have to
+  REM hand-delete %TANDEM_HOME%\venv just to re-run the installer.
+  "%VENV_DIR%\Scripts\python.exe" -m pip --version >nul 2>&1
+  if errorlevel 1 (
+    echo The existing environment has no pip -- repairing it with ensurepip ...
+    "%VENV_DIR%\Scripts\python.exe" -m ensurepip --upgrade >nul 2>&1
+    if errorlevel 1 (
+      echo ensurepip couldn't repair it -- recreating the environment from scratch.
+      rmdir /s /q "%VENV_DIR%"
+      %PYTHON_CMD% -m venv "%VENV_DIR%"
+      if errorlevel 1 (
+        echo Failed to create the virtual environment.
+        exit /b 1
+      )
+    ) else (
+      echo Repaired.
+    )
+  )
 )
 
 set "VENV_PY=%VENV_DIR%\Scripts\python.exe"

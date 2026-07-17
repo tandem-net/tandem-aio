@@ -3,7 +3,14 @@ mod crypto;
 mod executor;
 mod health;
 mod registration;
+// Bubblewrap + a per-app unix-domain socket make up the serve sandbox,
+// and neither exists on Windows. The sandbox module is also the only
+// thing that pulls in the Unix-only libc rlimit APIs, so gating the
+// whole module tree keeps a single Windows build clean. The cross-
+// platform compute path above still works fine without them.
+#[cfg(unix)]
 mod sandbox;
+#[cfg(unix)]
 mod serve;
 mod state;
 mod worker;
@@ -81,10 +88,15 @@ async fn main() {
 
     // Also run the web-hosting side: claim serve deployments and proxy their
     // traffic. It shares the node's identity and only talks out to the server.
-    let serve_cfg = cfg.clone();
-    tokio::spawn(async move {
-        serve::serve_loop(serve_cfg).await;
-    });
+    // Linux/macOS only -- the bwrap sandbox and the per-app socket behind it
+    // don't exist on Windows. The compute path above runs there just fine.
+    #[cfg(unix)]
+    {
+        let serve_cfg = cfg.clone();
+        tokio::spawn(async move {
+            serve::serve_loop(serve_cfg).await;
+        });
+    }
 
     eprintln!("[node] health loop started (every 3 s)");
     eprintln!("[node] entering task claim loop…");
