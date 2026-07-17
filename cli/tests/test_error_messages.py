@@ -75,11 +75,15 @@ class ConnectionErrorTranslationTests(unittest.TestCase):
 
 
 class RegistrationFailureHintTests(unittest.TestCase):
-    def test_missing_token_message_gets_a_hint(self) -> None:
+    def test_missing_token_message_leads_with_login(self) -> None:
         hint = commands._registration_failure_hint(
             'registration failed (401 Unauthorized): {"error":"Missing node registration bearer token"}'
         )
         self.assertIsNotNone(hint)
+        # Logging in is the seamless path, so it should come first...
+        self.assertIn("tandem auth login", hint)
+        self.assertLess(hint.index("tandem auth login"), hint.index("set-registration-token"))
+        # ...and the shared-token fallback is still spelled out for headless nodes.
         self.assertIn("tandem settings set-registration-token", hint)
 
     def test_invalid_token_message_gets_a_hint(self) -> None:
@@ -87,6 +91,7 @@ class RegistrationFailureHintTests(unittest.TestCase):
             'registration failed (403 Forbidden): {"error":"Invalid node registration token"}'
         )
         self.assertIsNotNone(hint)
+        self.assertIn("tandem auth login", hint)
 
     def test_unrelated_failure_gets_no_hint(self) -> None:
         hint = commands._registration_failure_hint("Registration timed out talking to the server.")

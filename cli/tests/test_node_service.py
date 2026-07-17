@@ -150,6 +150,50 @@ class RegistrationTokenResolutionTests(unittest.TestCase):
             self.assertNotIn("TANDEM_NODE_REGISTRATION_TOKEN", env)
 
 
+class RegistrationAuthTokenTests(unittest.TestCase):
+    """Being logged in should be all it takes to register: register_node_now hands
+    the node your saved API key as TANDEM_NODE_AUTH_TOKEN, which the server accepts
+    the same way it accepts a shared registration token -- no token to copy."""
+
+    def _capture_register_env(self, *, api_key, registration_token) -> dict:
+        with tempfile.TemporaryDirectory() as tmp:
+            home = _isolate_node_home(self, tmp)
+            captured: dict = {}
+
+            def fake_run(_cmd, **kwargs):
+                captured.update(kwargs.get("env") or {})
+                (home / "node.json").write_text(json.dumps({"node_id": "node_new"}))
+                result = MagicMock()
+                result.returncode = 0
+                result.stdout = ""
+                result.stderr = ""
+                return result
+
+            with patch.object(node_service, "get_api_key", return_value=api_key), \
+                    patch.object(node_service, "get_stored_registration_token", return_value=registration_token), \
+                    patch.dict(os.environ, {}, clear=False), \
+                    patch.object(node_service, "find_node_binary", return_value=Path("/fake/tandem-node")), \
+                    patch.object(node_service.subprocess, "run", side_effect=fake_run):
+                os.environ.pop("TANDEM_NODE_REGISTRATION_TOKEN", None)
+                result = node_service.register_node_now("http://server")
+
+            self.assertTrue(result.ok)
+            return captured
+
+    def test_logged_in_sends_the_api_key_as_the_auth_token(self) -> None:
+        env = self._capture_register_env(api_key="user-api-key", registration_token=None)
+        self.assertEqual(env.get("TANDEM_NODE_AUTH_TOKEN"), "user-api-key")
+
+    def test_not_logged_in_sends_no_auth_token(self) -> None:
+        env = self._capture_register_env(api_key=None, registration_token=None)
+        self.assertNotIn("TANDEM_NODE_AUTH_TOKEN", env)
+
+    def test_shared_token_still_flows_for_headless_nodes(self) -> None:
+        env = self._capture_register_env(api_key=None, registration_token="shared-token")
+        self.assertEqual(env.get("TANDEM_NODE_REGISTRATION_TOKEN"), "shared-token")
+        self.assertNotIn("TANDEM_NODE_AUTH_TOKEN", env)
+
+
 class NodeProcessTests(unittest.TestCase):
     def test_pid_file_round_trips(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

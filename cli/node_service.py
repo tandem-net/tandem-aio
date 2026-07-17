@@ -30,7 +30,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from .auth import get_stored_registration_token
+from .auth import get_api_key, get_stored_registration_token
 from .node_paths import (
     NODE_HOME,
     ensure_home,
@@ -164,6 +164,16 @@ def register_node_now(server_url: str, *, timeout: float = 120.0) -> Registratio
     ensure_home()
     env = build_node_env(server_url)
     env["TANDEM_NODE_REGISTER_ONLY"] = "1"
+
+    # The seamless path: if you're logged in, register this machine under your
+    # account using the API key we already saved at login -- no registration
+    # token to hunt down. The node sends it as its bearer token, and the server
+    # accepts a valid user API key just like it accepts the shared token. We only
+    # need it for this one-shot registration, so it goes here rather than into
+    # the long-running node's environment.
+    api_key = get_api_key()
+    if api_key:
+        env["TANDEM_NODE_AUTH_TOKEN"] = api_key
 
     try:
         completed = subprocess.run(
