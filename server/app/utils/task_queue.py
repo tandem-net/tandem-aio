@@ -73,7 +73,7 @@ def storage_root() -> pathlib.Path:
     # Always return an ABSOLUTE path. Blob paths derived from here get stored and
     # later handed to Flask's send_file(), which resolves a relative path against
     # app.root_path (…/server/app) rather than the cwd -- so a relative
-    # TASK_STORAGE_ROOT (e.g. "server/runtime" from .env) makes send_file look in
+    # TASK_STORAGE_ROOT (e.g. "runtime" from .env) makes send_file look in
     # the wrong place and 500 with FileNotFoundError. Resolving a relative value
     # against the server dir keeps storage independent of the process cwd.
     server_dir = pathlib.Path(current_app.root_path).resolve().parent
