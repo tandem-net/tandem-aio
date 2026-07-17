@@ -20,6 +20,25 @@ struct RegisterResponse {
     node_token: String,
 }
 
+/// The bearer token to send when registering, if we have one.
+///
+/// A logged-in user's auth token (`TANDEM_NODE_AUTH_TOKEN`, set by the CLI from
+/// the account you logged in with) is preferred, because that's the seamless
+/// path -- no separate secret to manage. If it isn't set we fall back to a
+/// shared registration token (`TANDEM_NODE_REGISTRATION_TOKEN`) for headless
+/// nodes. An empty value counts as "not set" so a blank env var doesn't send an
+/// empty Authorization header.
+fn registration_auth() -> Option<String> {
+    for var in ["TANDEM_NODE_AUTH_TOKEN", "TANDEM_NODE_REGISTRATION_TOKEN"] {
+        if let Ok(value) = env::var(var) {
+            if !value.is_empty() {
+                return Some(value);
+            }
+        }
+    }
+    None
+}
+
 /// Generate an RSA-4096 keypair, persist the private key, and register with the
 /// Tandem server.  Returns `(node_id, node_token)`.
 pub async fn register_node(
@@ -52,9 +71,12 @@ pub async fn register_node(
     let url = format!("{}/nodes/register", server_url.trim_end_matches('/'));
     let mut req = client.post(&url).json(&body);
 
-    // Attach optional registration token.
-    if let Ok(reg_token) = env::var("TANDEM_NODE_REGISTRATION_TOKEN") {
-        req = req.header("Authorization", format!("Bearer {reg_token}"));
+    // Attach whatever proves we're allowed to register. A logged-in user's auth
+    // token is the normal case (the CLI passes it for us), so it wins; if it
+    // isn't set we fall back to a shared registration token. Either way the
+    // server reads it from the same Authorization header.
+    if let Some(auth) = registration_auth() {
+        req = req.header("Authorization", format!("Bearer {auth}"));
     }
 
     let resp = req.send().await?;
