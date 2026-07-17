@@ -82,35 +82,32 @@ def _find_task(manifest: dict[str, Any], short_name: str) -> dict[str, Any]:
 
 def _build_start_files(
     config: dict[str, Any],
-    manifest_bytes: bytes,
     manifest: dict[str, Any],
     task_info: dict[str, Any],
     combined_payload: bytes,
 ) -> list[tuple[str, tuple[str, bytes, str]]]:
     """Assemble the multipart upload for POST /start/.
 
-    The task being called ships with its inputs folded into a TNDM payload; every
-    other task in the project ships as plain WASM so the server has the whole set.
+    Only the task being called is shipped: a manifest containing just this task,
+    plus its wasm with the call's inputs folded into a TNDM payload. Each task's
+    wasm is self-contained (the whole module is frozen into it), so sibling tasks
+    aren't needed to run it -- and the server queues one task per manifest entry,
+    so shipping siblings would make it run them too, each with empty input. A
+    sibling without a default argument then traps and fails the whole job. Sending
+    just the called task keeps `.submit()` reliable on multi-task projects.
     """
-    output_dir: Path = config["output_dir"]
     config_path: Path = config["config_path"]
 
-    files: list[tuple[str, tuple[str, bytes, str]]] = [
+    single_task_manifest = dict(manifest)
+    single_task_manifest["tasks"] = [task_info]
+    manifest_bytes = json.dumps(single_task_manifest).encode("utf-8")
+
+    filename = Path(task_info["wasm"]).name
+    return [
         ("toml_file", (config_path.name, config_path.read_bytes(), "application/toml")),
         ("manifest_file", ("manifest.json", manifest_bytes, "application/json")),
+        ("wasm_files", (filename, combined_payload, "application/wasm")),
     ]
-
-    for task in manifest.get("tasks", []):
-        wasm_rel = task.get("wasm")
-        if not wasm_rel:
-            continue
-        filename = Path(wasm_rel).name
-        if task is task_info:
-            files.append(("wasm_files", (filename, combined_payload, "application/wasm")))
-        else:
-            wasm_bytes = (output_dir / wasm_rel).read_bytes()
-            files.append(("wasm_files", (filename, wasm_bytes, "application/wasm")))
-    return files
 
 
 def _make_poll(server_url: str, api_key: str, job_id: str, job_token: str, short_name: str):
@@ -182,7 +179,7 @@ def submit_task(task_name: str, args: tuple[Any, ...], kwargs: dict[str, Any]) -
     if not pid:
         pid = _deploy_project(server_url, api_key, config["config_path"])
 
-    files = _build_start_files(config, manifest_bytes, manifest, task_info, combined_payload)
+    files = _build_start_files(config, manifest, task_info, combined_payload)
     resp = requests.post(
         f"{server_url}/start/",
         headers={"X-API-Key": api_key},
