@@ -1,22 +1,37 @@
-"""Tandem web-hosting example -- a real web app, intermeshed with compute.
+"""Tandem web-hosting example -- a real Flask app, intermeshed with compute.
 
 Tandem hosts this app on your nodes inside a locked-down, network-isolated
 sandbox. Instead of a TCP port it binds the unix socket Tandem gives it in
 $TANDEM_SERVE_SOCKET; the node proxies HTTP to that socket and the load balancer
 spreads traffic across however many nodes run it.
 
+Two things are worth calling out because they're what makes Flask work here:
+
+  1. No network on the node. So Flask can't be pip-installed at run time -- it
+     has to travel inside the bundle. web.toml has a [build] install step
+     (`pip install flask --target libs`) that `tandem serve` runs for you before
+     it ships the app, dropping Flask into ./libs. We add that folder to the
+     import path below, before importing Flask.
+
+  2. No TCP port. A normal Flask app calls app.run() and listens on a port.
+     Here we hand the app to Werkzeug's run_simple() bound to a `unix://` socket
+     instead -- the one Tandem put in $TANDEM_SERVE_SOCKET.
+
 The **intermeshing**: the request handlers reuse the very same
 `@tandem.compute` functions you'd otherwise run as distributed tasks. Here they
-run locally inside the app -- which is the point: one function, usable as a
-distributed compute task *and* as ordinary code inside a hosted web service.
-(The serve sandbox has no network by design, so the app does its compute in-
-process rather than dispatching it back out.)
+run locally inside the app -- one function, usable as a distributed compute task
+*and* as ordinary code inside a hosted web service. (The serve sandbox has no
+network by design, so the app does its compute in-process rather than dispatching
+it back out.)
 
-Deploy it onto your nodes:
+Deploy it onto your nodes (log in first -- `tandem serve` uses your OS-keyring
+credentials -- and have a node running):
 
+    tandem auth login        # stores credentials in your OS keyring
     tandem serve web.toml
 
-Or run it directly for a quick local check (binds ./demo.sock):
+Or run it directly for a quick local check (needs Flask on your machine, e.g.
+`pip install flask`, then it binds ./demo.sock):
 
     TANDEM_SERVE_SOCKET=./demo.sock python3 web_example.py &
     curl --unix-socket ./demo.sock http://localhost/
@@ -24,10 +39,17 @@ Or run it directly for a quick local check (binds ./demo.sock):
     curl --unix-socket ./demo.sock http://localhost/double
 """
 
-import http.server
-import json
 import os
-import socketserver
+import sys
+
+# The node runs this app with its own bare Python and no network, so our
+# dependencies ride along inside the bundle. `tandem serve` runs the [build]
+# install step from web.toml, which puts Flask in ./libs -- add that to the
+# import path before we import it.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "libs"))
+
+from flask import Flask, jsonify
+from werkzeug.serving import run_simple
 
 import tandem
 
@@ -58,56 +80,37 @@ def _double(x):
 double_all = tandem.split(_double, chunk=8)
 
 
-class Handler(http.server.BaseHTTPRequestHandler):
-    def _send(self, status, payload):
-        body = json.dumps(payload).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
-
-    def do_GET(self):
-        parts = [p for p in self.path.split("?")[0].split("/") if p]
-
-        # GET /            -> a greeting plus which node answered
-        if not parts:
-            return self._send(200, {"app": "tandem web demo", "served_by": NODE})
-
-        # GET /crunch/<n>  -> run the @compute task locally inside the handler
-        if len(parts) == 2 and parts[0] == "crunch":
-            try:
-                n = int(parts[1])
-            except ValueError:
-                return self._send(400, {"error": "n must be an integer"})
-            return self._send(200, {"crunch": crunch(n), "served_by": NODE})
-
-        # GET /double      -> use split() to map over a fixed list
-        if parts == ["double"]:
-            return self._send(
-                200, {"doubled": double_all([1, 2, 3, 4, 5]), "served_by": NODE}
-            )
-
-        return self._send(
-            404, {"error": "not found", "try": ["/", "/crunch/1000", "/double"]}
-        )
-
-    def log_message(self, *args):
-        pass
+# A normal Flask app -- the only unusual part is how we start it, down in main().
+app = Flask(__name__)
 
 
-class UnixHTTPServer(socketserver.UnixStreamServer):
-    # BaseHTTPRequestHandler expects a (host, port) client address; give it a stub.
-    def get_request(self):
-        connection, _ = self.socket.accept()
-        return connection, ("local", 0)
+@app.route("/")
+def index():
+    # A greeting plus which node answered, so you can see the load balancer
+    # spreading traffic when more than one node is serving.
+    return jsonify({"app": "tandem flask demo", "served_by": NODE})
+
+
+@app.route("/crunch/<int:n>")
+def do_crunch(n):
+    # Run the @compute task locally, right inside the request handler.
+    return jsonify({"crunch": crunch(n), "served_by": NODE})
+
+
+@app.route("/double")
+def do_double():
+    # Use split() to map over a fixed list.
+    return jsonify({"doubled": double_all([1, 2, 3, 4, 5]), "served_by": NODE})
 
 
 def main():
+    # Clear any leftover socket from a previous run so we can bind cleanly, then
+    # serve on the unix socket Tandem handed us instead of a TCP port. threaded
+    # lets a slow request not hold up the next one.
     if os.path.exists(SOCKET):
         os.remove(SOCKET)
-    print(f"tandem web demo listening on {SOCKET} (node {NODE})")
-    UnixHTTPServer(SOCKET, Handler).serve_forever()
+    print(f"tandem flask demo listening on {SOCKET} (node {NODE})")
+    run_simple(f"unix://{SOCKET}", 0, app, threaded=True)
 
 
 if __name__ == "__main__":

@@ -1,16 +1,33 @@
-"""Tandem compute example -- exercises every feature of the compute SDK.
+"""Tandem compute example -- exercises the compute SDK.
 
 Run it directly to see the local behaviour (no server needed):
 
     python3 compute_example.py
 
-To also see distributed execution on real nodes, build the project and run it
-against a Tandem server (see README.md in this folder):
+To run the tasks on real nodes there are two paths.
 
-    tandem build
-    export TANDEM_SERVER_URL=http://127.0.0.1:6767
-    export TANDEM_API_KEY=<your key from `tandem auth login`>
-    python3 compute_example.py
+1) The CLI -- build, deploy, start. `tandem start` runs every @tandem.compute
+   task once with its default arguments, so the tasks below have defaults.
+   Credentials come from your OS keyring after `tandem auth login`, so there are
+   no environment variables to set:
+
+       tandem auth login        # stores credentials in your OS keyring
+       tandem node start        # if a node isn't already running
+       tandem build             # compile the tasks to .wasm
+       tandem deploy            # register a deployment (prints a PID)
+       tandem start             # run crunch()/greet() on a node and print results
+                                # (tandem start also builds + deploys, so on its
+                                #  own it's enough)
+
+2) From Python, with real arguments -- `.submit(...)`. This ships one call and
+   hands back a future. `.submit()` reads your API key from TANDEM_API_KEY;
+   since `tandem auth login` keeps the key in your keyring (not a .env file),
+   print it once and export it (also set TANDEM_SERVER_URL for a non-local
+   server):
+
+       tandem auth login --show-api-key    # prints "API key: <key>"
+       export TANDEM_API_KEY=<key>
+       python3 compute_example.py
 """
 
 import os
@@ -27,18 +44,23 @@ import tandem
 SCALE = tandem.Immutable(10)
 
 
-# --- a plain helper function ------------------------------------------------
+# --- plain helper functions -------------------------------------------------
 # Tasks may call helper functions defined in the same module -- they get frozen
 # in alongside the task.
 def _square(x):
     return x * x
 
 
+def _double(x):
+    return x * 2
+
+
 # --- @tandem.compute --------------------------------------------------------
-# Mark a function to run on a node. Options are optional; batch and timeout_ms
-# are hints (timeout_ms becomes the node's fuel budget).
+# Mark a function to run on a node. Give the parameters defaults so the task
+# also runs under `tandem start`, which invokes every task once with no
+# arguments. timeout_ms is the node's fuel budget -- a loop needs enough of it.
 @tandem.compute(batch=1, timeout_ms=5000)
-def crunch(n):
+def crunch(n=1000):
     """Sum of squares 0..n-1, scaled by the Immutable SCALE."""
     total = 0
     for i in range(n):
@@ -47,18 +69,8 @@ def crunch(n):
 
 
 @tandem.compute()
-def greet(name):
+def greet(name="world"):
     return f"hello {name} from a tandem node"
-
-
-# --- tandem.split -----------------------------------------------------------
-# split(fn) returns a callable that applies fn to each item of a list and returns
-# the results in order. Called locally it just maps.
-def _double(x):
-    return x * 2
-
-
-double_all = tandem.split(_double, chunk=4)
 
 
 def local_demo():
@@ -67,7 +79,14 @@ def local_demo():
     # inside a node.
     print("  crunch(4)            =", crunch(4))           # (0+1+4+9)*10 = 140
     print("  greet('sam')         =", greet("sam"))
+
+    # tandem.split(fn) returns a callable that applies fn to each item of a list.
+    # A bare call just maps locally; the chunk hint is how many items to hand
+    # each node when the work is fanned out. A split takes a list as input, so
+    # it runs from Python -- not through the no-argument `tandem start` path.
+    double_all = tandem.split(_double, chunk=4)
     print("  double_all([1,2,3])  =", double_all([1, 2, 3]))
+
     print("  SCALE.value          =", SCALE.value, " repr:", repr(SCALE))
 
     # Immutable really is read-only.
@@ -104,8 +123,8 @@ def distributed_demo():
     print("\n== distributed execution (.submit / .done / .result / gather) ==")
     if not os.environ.get("TANDEM_API_KEY"):
         print(
-            "  (skipped -- run `tandem build` first, make sure a node is running,\n"
-            "   and set TANDEM_SERVER_URL + TANDEM_API_KEY; see README.md)"
+            "  (skipped -- run `tandem build`, make sure a node is running, then\n"
+            "   export TANDEM_API_KEY from `tandem auth login --show-api-key`; see README.md)"
         )
         return
 
