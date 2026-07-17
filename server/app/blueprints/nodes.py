@@ -13,6 +13,7 @@ from cryptography.hazmat.primitives import serialization
 from app.extensions import db, redis_client
 from app.models import Deployment, NodePublicKey, TaskEncryptionKey
 from app.utils import quota, zkp
+from app.utils.auth import get_api_client
 from app.utils.task_queue import (
     TASK_LEASE_SECONDS,
     claim_task_for_node,
@@ -69,17 +70,42 @@ def _require_node_auth():
     return node_id, node, None
 
 
-def _require_node_registration_token():
+def _resolve_registration_identity():
+    """Work out whether the caller may register a new node, and who they are.
+
+    There are two ways to be allowed in, checked in this order:
+
+      1. A valid user API key. Anyone who has logged in through the CLI already
+         has one, so `tandem node start` just works -- no extra secret to copy
+         around. When this is how they got in, we also learn which user owns the
+         node.
+      2. The server's shared registration token, if the operator configured one.
+         This is the escape hatch for headless nodes that aren't tied to a user
+         account.
+
+    Returns a (api_client, error) pair. On success `error` is None and
+    `api_client` is the owning user (or None for the anonymous token path). On
+    failure `error` is a ready-to-return Flask (response, status) tuple.
+    """
+    provided = _extract_bearer_token()
+
+    # Path 1: a real user's API key is all it takes.
+    if provided:
+        api_client = get_api_client(provided)
+        if api_client is not None:
+            return api_client, None
+
+    # Path 2: fall back to the shared registration token. If the server isn't
+    # gating registration at all (no token configured), we leave the door open,
+    # same as before.
     expected = (current_app.config.get("NODE_REGISTRATION_TOKEN") or "").strip()
     if not expected:
-        return None
-
-    provided = _extract_bearer_token()
+        return None, None
     if not provided:
-        return jsonify({"error": "Missing node registration bearer token"}), 401
+        return None, (jsonify({"error": "Missing node registration bearer token"}), 401)
     if not compare_token(expected, provided):
-        return jsonify({"error": "Invalid node registration token"}), 403
-    return None
+        return None, (jsonify({"error": "Invalid node registration token"}), 403)
+    return None, None
 
 
 def _as_capability_flag(value: object) -> str:
@@ -127,7 +153,7 @@ def health():
 
 @nodes_bp.route("/register", methods=["POST"])
 def register():
-    registration_error = _require_node_registration_token()
+    owner, registration_error = _resolve_registration_identity()
     if registration_error is not None:
         return registration_error
 
@@ -141,6 +167,11 @@ def register():
         "last_seen": timestamp,
         "supports_wasm": _as_capability_flag(data.get("supports_wasm")),
     }
+
+    # If they registered by logging in, remember whose node this is. Nodes that
+    # come in on the shared token stay anonymous (no owner to record).
+    if owner is not None:
+        metrics["owner_user_id"] = str(owner.user_id)
 
     for field in ("latency", "download", "upload"):
         value = data.get(field)
