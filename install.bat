@@ -94,12 +94,13 @@ if not exist "%BIN_DIR%" mkdir "%BIN_DIR%"
 echo.
 echo Tandem CLI installed.
 
-REM 5. If your server needs a node registration token, save it now so `tandem
-REM node start` doesn't need it exported by hand every session. We check, in
-REM order: the environment, this repo's own .env file (where a local dev
-REM server's token normally lives), and finally the token the server
-REM auto-generates on its own first run -- so if you've already started the
-REM server once on this same machine, this just finds it.
+REM 5. You normally don't need a registration token at all: once you run
+REM `tandem auth login`, your node registers under your account automatically.
+REM But as a convenience for the all-on-one-machine dev setup, if this repo's
+REM server has already generated a token we quietly save it, so a headless
+REM `tandem node start` works even before you log in. We check, in order: the
+REM environment, this repo's .env file, and the server's auto-generated token.
+REM If none exist, we skip this silently -- logging in is all you need.
 set "REGISTRATION_TOKEN=%TANDEM_NODE_REGISTRATION_TOKEN%"
 set "TOKEN_SOURCE=the environment"
 if not defined REGISTRATION_TOKEN if exist "%REPO_ROOT%\.env" (
@@ -113,8 +114,8 @@ if not defined REGISTRATION_TOKEN if exist "%REPO_ROOT%\server\keys\node_registr
 
 if defined REGISTRATION_TOKEN (
   call "%BIN_DIR%\tandem.bat" settings set-registration-token "%REGISTRATION_TOKEN%" >nul
-  echo Saved a node registration token from %TOKEN_SOURCE%.
-  echo tandem node start will use it automatically -- no export needed.
+  echo Found this repo's server token ^(%TOKEN_SOURCE%^) and saved it as a fallback.
+  echo Logging in still works too, and takes precedence -- either way you're set.
   echo.
 )
 
@@ -187,6 +188,7 @@ echo   1. Log in:            tandem auth login
 echo   2. Start your node:   tandem node start
 echo   3. Check on it:       tandem status
 echo.
+echo That's it -- no registration token to copy. Logging in is all a node needs.
 echo Your node needs to be running before you can deploy or start a job.
 
 endlocal
