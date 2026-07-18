@@ -12,7 +12,6 @@ summed across all of a user's keys.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable
 
 from sqlalchemy import select
 
@@ -85,16 +84,15 @@ def _collect_instructions(user_id: int) -> ResourceMetric:
     )
 
 
-def _placeholder_collector(
-    resource_type: str, limit: float, unit: str
-) -> Callable[[int], ResourceMetric]:
-    """Build a collector that reports 0 used, clearly marked as a placeholder.
+def usage_for_user(user_id: int) -> list[ResourceMetric]:
+    """Gather every resource metric for one account.
 
-    Swap one of these out for a real collector (same signature) once the metric
-    can actually be measured, and nothing else has to change.
+    Only instructions are really measured today. RAM, storage, CPU, and GPU are
+    placeholders -- a fixed limit with 0 used -- until each one gets wired up.
+    This is also the order `tandem usage` prints them in.
     """
 
-    def collect(user_id: int) -> ResourceMetric:
+    def placeholder(resource_type: str, limit: float, unit: str) -> ResourceMetric:
         return ResourceMetric(
             type=resource_type,
             used=0.0,
@@ -103,20 +101,10 @@ def _placeholder_collector(
             source=PLACEHOLDER,
         )
 
-    return collect
-
-
-# The registry. Add real collectors here as they get wired up; this order is the
-# order `tandem usage` prints them.
-_COLLECTORS: list[Callable[[int], ResourceMetric]] = [
-    _collect_instructions,
-    _placeholder_collector("ram", ACCOUNT_RAM_LIMIT_BYTES, "bytes"),
-    _placeholder_collector("storage", ACCOUNT_STORAGE_LIMIT_BYTES, "bytes"),
-    _placeholder_collector("cpu", ACCOUNT_CPU_LIMIT_CORES, "cores"),
-    _placeholder_collector("gpu", ACCOUNT_GPU_LIMIT_COUNT, "gpus"),
-]
-
-
-def usage_for_user(user_id: int) -> list[ResourceMetric]:
-    """Gather every resource metric for one account."""
-    return [collect(user_id) for collect in _COLLECTORS]
+    return [
+        _collect_instructions(user_id),
+        placeholder("ram", ACCOUNT_RAM_LIMIT_BYTES, "bytes"),
+        placeholder("storage", ACCOUNT_STORAGE_LIMIT_BYTES, "bytes"),
+        placeholder("cpu", ACCOUNT_CPU_LIMIT_CORES, "cores"),
+        placeholder("gpu", ACCOUNT_GPU_LIMIT_COUNT, "gpus"),
+    ]
