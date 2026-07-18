@@ -66,7 +66,6 @@ def serve_deploy():
         pid,
         start_command=shlex.split(start_command),
         replicas=replicas,
-        api_key=api_client.api_key,
     )
     return jsonify({"pid": pid, "url": f"/app/{pid}/"}), 201
 
