@@ -31,12 +31,6 @@ use std::process::{Child, Command};
 /// Resource ceilings for a sandboxed app.
 #[derive(Debug, Clone)]
 pub struct SandboxLimits {
-    /// Hard memory ceiling in bytes. Enforced by the cgroup when one is
-    /// available; this is the number written to `memory.max`.
-    pub memory_bytes: u64,
-    /// Most processes/threads the app may have at once (fork-bomb guard).
-    /// Enforced by the cgroup's `pids.max` when available.
-    pub max_processes: u64,
     /// Most open file descriptors (rlimit).
     pub max_open_files: u64,
     /// Biggest single file the app may write, in bytes (rlimit; guards against a
@@ -48,11 +42,8 @@ pub struct SandboxLimits {
 
 impl Default for SandboxLimits {
     fn default() -> Self {
-        // Conservative defaults; the serve deployment overrides these from the
-        // account's limits (e.g. the 5 GiB RAM cap).
+        // Conservative rlimit defaults for a hosted app.
         Self {
-            memory_bytes: 512 * 1024 * 1024,
-            max_processes: 256,
             max_open_files: 1024,
             max_file_bytes: 256 * 1024 * 1024,
             cpu_seconds: 3600,
@@ -76,9 +67,6 @@ pub struct SandboxSpec {
     pub allow_network: bool,
     /// Resource ceilings.
     pub limits: SandboxLimits,
-    /// A writable cgroup-v2 directory the node may create a child cgroup under,
-    /// if it has one. `None` means "no hard memory/pids cap available".
-    pub cgroup_parent: Option<PathBuf>,
 }
 
 /// Is bubblewrap available? Used to fail early with a clear message (and to skip
@@ -210,7 +198,6 @@ mod tests {
             env: vec![("PATH".to_string(), "/usr/bin:/bin".to_string())],
             allow_network: false,
             limits: SandboxLimits::default(),
-            cgroup_parent: None,
         }
     }
 
