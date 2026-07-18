@@ -39,6 +39,14 @@ def _windows_launcher() -> Path:
     return node_paths.BIN_DIR / "tandem.bat"
 
 
+def _system_bin_binaries() -> list[Path]:
+    """Where the macOS .dmg installer's Install.command (build-dmg.sh) drops all
+    three binaries straight onto PATH, with no package manager tracking them. A
+    .deb install lives in /usr/bin instead, and removing those is dpkg's job
+    (`sudo apt remove tandem`), so we leave that directory alone here."""
+    return [Path("/usr/local/bin") / name for name in ("tandem", "tandem-node", "tandem-compile")]
+
+
 def _running_from(root: Path) -> bool:
     """Are we executing from inside `root`? If so we can't delete it out from under
     ourselves, so the caller defers that removal to a detached process."""
@@ -95,12 +103,18 @@ def perform_uninstall() -> list[str]:
         steps.append(f"warning: could not clear your saved login ({exc})")
 
     # 3. Remove the `tandem` launcher on PATH. The POSIX one lives outside
-    # ~/.tandem, so it has to go separately.
-    for launcher in (_posix_launcher(), _windows_launcher()):
+    # ~/.tandem, so it has to go separately, and so do the raw binaries a .dmg
+    # install drops in /usr/local/bin.
+    for launcher in (_posix_launcher(), _windows_launcher(), *_system_bin_binaries()):
         try:
             if launcher.is_symlink() or launcher.exists():
                 launcher.unlink()
                 steps.append(f"removed {launcher}")
+        except PermissionError:
+            steps.append(
+                f"warning: could not remove {launcher} (no permission -- "
+                f"run 'sudo rm {launcher}' yourself)"
+            )
         except OSError as exc:
             steps.append(f"warning: could not remove {launcher} ({exc})")
 
