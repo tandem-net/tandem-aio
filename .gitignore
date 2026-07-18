@@ -35,7 +35,8 @@ node_modules/
 
 # Testing & build
 /coverage
-/build
+cli/build
+cli/tandem_cli.egg-info
 
 # Environment variables
 .env.local
