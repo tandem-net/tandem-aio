@@ -271,17 +271,6 @@ def _qualified_name(expr: ast.expr) -> tuple[str, ...]:
     return ()
 
 
-def _format_call_name(call: ast.Call) -> str:
-    qualified = _qualified_name(call.func)
-    if qualified:
-        return ".".join(qualified)
-
-    if isinstance(call.func, ast.Attribute):
-        return call.func.attr
-
-    return type(call.func).__name__
-
-
 def _iter_calls(root: ast.AST) -> list[ast.Call]:
     calls: list[ast.Call] = []
 
