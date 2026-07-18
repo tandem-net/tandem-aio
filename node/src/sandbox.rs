@@ -141,8 +141,17 @@ fn build_bwrap_command(spec: &SandboxSpec) -> Command {
     cmd
 }
 
+// The libc crate names the type of setrlimit's "which resource" argument
+// differently per platform (a glibc-specific alias on Linux, a plain c_int
+// everywhere else, including macOS). This alias lets set_rlimit take
+// whichever one the current target actually expects.
+#[cfg(target_os = "linux")]
+type RlimitResource = libc::__rlimit_resource_t;
+#[cfg(not(target_os = "linux"))]
+type RlimitResource = libc::c_int;
+
 /// Set one rlimit (soft = hard) for the calling process.
-fn set_rlimit(resource: libc::__rlimit_resource_t, value: u64) -> io::Result<()> {
+fn set_rlimit(resource: RlimitResource, value: u64) -> io::Result<()> {
     let limit = libc::rlimit {
         rlim_cur: value,
         rlim_max: value,
