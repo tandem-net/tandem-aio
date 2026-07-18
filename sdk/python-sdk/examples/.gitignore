@@ -1,0 +1,8 @@
+# Dependencies vendored in by `tandem serve` (web.toml's [build] install)
+libs/
+
+# Local unix socket from running web_example.py directly
+*.sock
+
+# Build output
+.tandem_build/

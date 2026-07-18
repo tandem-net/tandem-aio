@@ -36,6 +36,7 @@ node_modules/
 # Testing & build
 /coverage
 /build
+/frontend/build/
 
 # Environment variables
 .env.local
@@ -53,3 +54,33 @@ server/runtime/
 venv/
 **/__pycache__/
 .env
+my.env
+
+# Local dev database and server logs (auto-created at runtime)
+server/dev.db
+server/*.log
+
+# CLI build output
+.tandem_build/
+
+# Next.js build output
+.next/
+
+# SDK generated artifacts
+sdk/app.wasm
+sdk/.build/
+sdk/wit_world/
+sdk/componentize_py_async_support/
+sdk/componentize_py_runtime.pyi
+sdk/componentize_py_types.py
+sdk/poll_loop.py
+
+build/
+dist/
+*.egg-info/
+
+#Get rid of node_key temp
+**/*.pem
+
+# auto-generated node registration secret (see server/app/__init__.py)
+server/keys/node_registration_token.txt

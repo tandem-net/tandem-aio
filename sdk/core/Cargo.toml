@@ -1,0 +1,15 @@
+[package]
+name = "tandem-core"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+name = "tandem_core"
+
+[[bin]]
+name = "tandem-compile"
+path = "src/bin/tandem-compile.rs"
+
+[dependencies]
+sha2 = "0.10"

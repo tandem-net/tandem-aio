@@ -1,0 +1,12 @@
+package tandem:task@0.1.0;
+
+// The contract every Tandem task component implements, whatever language it was
+// written in. The CLI compiles a user's marked function into a component that
+// exports `run`; the node loads that component and calls `run` with the task's
+// JSON-encoded input, then ships back the JSON-encoded result.
+//
+// Keeping this tiny and language-neutral is the whole point: a new language SDK
+// just has to produce a component that exports this one function.
+world task {
+    export run: func(input: list<u8>) -> list<u8>;
+}

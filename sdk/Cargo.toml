@@ -1,0 +1,3 @@
+[workspace]
+members = ["core", "wrappers/python"]
+resolver = "3"
