@@ -5,27 +5,11 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Run Windows - Experimental",
-            "request": "launch",
-            "type": "reactnative",
-            "cwd": "${workspaceFolder}",
-            "enableDebug": false,
-            "platform": "windows"
-        },
-        {
-            "name": "Run Windows Hermes",
-            "request": "launch",
-            "type": "reactnativedirect",
-            "cwd": "${workspaceFolder}",
-            "enableDebug": false,
-            "platform": "windows"
-        },
-        {
             "type": "chrome",
             "request": "launch",
-            "name": "Launch Chrome against localhost",
-            "url": "http://localhost:8080",
-            "webRoot": "${workspaceFolder}"
+            "name": "Launch Chrome against the frontend",
+            "url": "http://localhost:3000",
+            "webRoot": "${workspaceFolder}/frontend"
         }
     ]
 }

@@ -1,172 +1,165 @@
-mod measure;
-mod tasks;
+mod config;
+mod crypto;
+mod executor;
+mod health;
+mod registration;
+// Bubblewrap + a per-app unix-domain socket make up the serve sandbox,
+// and neither exists on Windows. The sandbox module is also the only
+// thing that pulls in the Unix-only libc rlimit APIs, so gating the
+// whole module tree keeps a single Windows build clean. The cross-
+// platform compute path above still works fine without them.
+#[cfg(unix)]
+mod sandbox;
+#[cfg(unix)]
+mod serve;
+mod state;
+mod worker;
 
-use reqwest::Client;
 use std::env;
-use std::time::Duration;
-use tokio::time::{Instant, interval, sleep};
+use std::time::{SystemTime, UNIX_EPOCH};
 
-fn server_base_url() -> String {
-    env::var("TANDEM_SERVER_URL")
-        .or_else(|_| env::var("SERVER_URL"))
-        .unwrap_or_else(|_| String::from("http://127.0.0.1:6767"))
-        .trim_end_matches('/')
-        .to_string()
-}
+use config::NodeConfig;
+use state::NodeState;
 
 #[tokio::main]
 async fn main() {
-    let client = Client::new();
-    let server_base_url = server_base_url();
-
-    let register_url = format!("{}/nodes/register", server_base_url);
-    let ping_url = format!("{}/nodes/ping", server_base_url);
-    let health_url = format!("{}/nodes/health", server_base_url);
-    let claim_url = format!("{}/nodes/tasks/claim", server_base_url);
-    let download_benchmark_url = format!("{}/nodes/download", server_base_url);
-    let upload_benchmark_url = format!("{}/nodes/upload", server_base_url);
-
-    let download_speed =
-        match tasks::benchmark_download(client.clone(), download_benchmark_url).await {
-            Ok(speed) => speed,
-            Err(error) => {
-                eprintln!("download benchmark failed: {}", error);
-                0.0
-            }
-        };
-
-    let upload_bytes = 300 * 1024 * 1024;
-    let upload_speed =
-        match tasks::benchmark_upload(client.clone(), upload_benchmark_url, upload_bytes).await {
-            Ok(speed) => speed,
-            Err(error) => {
-                eprintln!("upload benchmark failed: {}", error);
-                0.0
-            }
-        };
-
-    let latency_start = Instant::now();
-    let latency = match client.get(&server_base_url).send().await {
-        Ok(_) => latency_start.elapsed().as_secs_f32() * 1000.0,
-        Err(error) => {
-            eprintln!("latency probe failed: {}", error);
-            0.0
-        }
-    };
-
-    let metrics = tasks::Metrics {
-        latency,
-        download: download_speed,
-        upload: upload_speed,
-    };
-
-    let identity = match tasks::register(client.clone(), register_url, &metrics).await {
-        Ok(identity) => identity,
-        Err(error) => {
-            eprintln!("node registration failed: {}", error);
-            return;
-        }
-    };
-
-    println!("Registered node {}", identity.node_id);
-
-    if let Err(error) = tasks::ping(client.clone(), ping_url, &identity, &metrics).await {
-        eprintln!("initial ping failed: {}", error);
+    // try loading .env from the current dir first, then fall back to the parent
+    // directory so `cargo run` works from inside node/ too
+    if dotenvy::dotenv().is_err() {
+        let _ = dotenvy::from_filename("../.env");
     }
 
-    let heartbeat_client = client.clone();
-    let heartbeat_identity = identity.clone();
-    let heartbeat_metrics = metrics.clone();
-    let heartbeat_url = health_url.clone();
+    // ── 2. Read config ──────────────────────────────────────────────────
+    let mut cfg = NodeConfig::from_env();
 
-    tokio::spawn(async move {
-        let mut ticker = interval(Duration::from_millis(250));
+    // The CLI uses this to register the machine and immediately exit, so it can
+    // tell the user "registered as node_xyz" before it starts the long-running
+    // background process. In this mode we skip the health and task loops.
+    let register_only = env::var("TANDEM_NODE_REGISTER_ONLY")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
 
-        loop {
-            ticker.tick().await;
+    eprintln!("[node] server_url = {}", cfg.server_url);
 
-            if let Err(error) = tasks::health(
-                heartbeat_client.clone(),
-                heartbeat_url.clone(),
-                &heartbeat_identity,
-                &heartbeat_metrics,
-            )
-            .await
-            {
-                eprintln!("health failed: {}", error);
+    // ── 3. Register if this is a first boot (no saved identity) ─────────
+    if cfg.node_id.is_empty() {
+        eprintln!("[node] no saved node identity — starting registration…");
+        match registration::register_node(&cfg.server_url, &cfg.private_key_path).await {
+            Ok((node_id, node_token)) => {
+                cfg.node_id = node_id;
+                cfg.node_token = node_token;
+                persist_identity(&cfg);
+            }
+            Err(e) => {
+                eprintln!("[node] FATAL: registration failed — {e}");
+                std::process::exit(1);
             }
         }
+    } else if register_only {
+        eprintln!("[node] already registered as {}", cfg.node_id);
+    }
+
+    eprintln!("[node] node_id = {}", cfg.node_id);
+
+    // Registration done and reported — nothing else to do in this mode.
+    if register_only {
+        // A stdout marker the CLI can read as a fallback to the state file.
+        println!("TANDEM_NODE_ID={}", cfg.node_id);
+        return;
+    }
+
+    // ── 4. Load RSA private key ─────────────────────────────────────────
+    let private_key = match crypto::load_private_key(&cfg.private_key_path) {
+        Ok(k) => k,
+        Err(e) => {
+            eprintln!(
+                "[node] FATAL: could not load private key from '{}': {e}",
+                cfg.private_key_path
+            );
+            std::process::exit(1);
+        }
+    };
+
+    // ── 5. Spawn background health loop ─────────────────────────────────
+    let health_cfg = cfg.clone();
+    tokio::spawn(async move {
+        health::health_loop(health_cfg).await;
     });
 
-    let task_timeout_secs = env::var("TANDEM_TASK_TIMEOUT_SECS")
-        .ok()
-        .and_then(|value| value.parse::<u64>().ok())
-        .unwrap_or(300);
+    // Also run the web-hosting side: claim serve deployments and proxy their
+    // traffic. It shares the node's identity and only talks out to the server.
+    // Linux/macOS only -- the bwrap sandbox and the per-app socket behind it
+    // don't exist on Windows. The compute path above runs there just fine.
+    #[cfg(unix)]
+    {
+        let serve_cfg = cfg.clone();
+        tokio::spawn(async move {
+            serve::serve_loop(serve_cfg).await;
+        });
+    }
 
-    loop {
-        match tasks::claim_task(client.clone(), claim_url.clone(), &identity).await {
-            Ok(Some(task)) => {
-                println!(
-                    "Claimed task {} for job {} ({})",
-                    task.tid, task.job_id, task.filename
-                );
+    eprintln!("[node] health loop started (every 3 s)");
+    eprintln!("[node] entering task claim loop…");
 
-                let execution_result =
-                    match tasks::download_task_payload(client.clone(), &task, &identity).await {
-                        Ok(payload) => {
-                            tasks::execute_cloudpickle_task(
-                                payload,
-                                Duration::from_secs(task_timeout_secs),
-                            )
-                            .await
-                        }
-                        Err(error) => Err(error),
-                    };
-
-                match execution_result {
-                    Ok(result_bytes) => {
-                        if let Err(error) = tasks::submit_task_result(
-                            client.clone(),
-                            &server_base_url,
-                            &task,
-                            &identity,
-                            result_bytes,
-                        )
-                        .await
-                        {
-                            eprintln!("failed to submit result for {}: {}", task.tid, error);
-                        } else {
-                            println!("Completed task {}", task.tid);
-                        }
-                    }
-                    Err(error) => {
-                        let error_text = error.to_string();
-                        eprintln!("task {} failed: {}", task.tid, error_text);
-
-                        if let Err(report_error) = tasks::submit_task_failure(
-                            client.clone(),
-                            &server_base_url,
-                            &task,
-                            &identity,
-                            &error_text,
-                        )
-                        .await
-                        {
-                            eprintln!(
-                                "failed to report task failure for {}: {}",
-                                task.tid, report_error
-                            );
-                        }
-                    }
-                }
-            }
-            Ok(None) => {
-                sleep(Duration::from_millis(250)).await;
-            }
-            Err(error) => {
-                eprintln!("task claim failed: {}", error);
-                sleep(Duration::from_secs(1)).await;
-            }
+    // ── 6. Run the main task loop, with graceful shutdown ───────────────
+    tokio::select! {
+        _ = worker::task_loop(&cfg, &private_key) => {
+            // task_loop runs forever; this arm only fires if it somehow returns.
         }
+        _ = shutdown_signal() => {
+            eprintln!("\n[node] shutdown signal received — exiting gracefully");
+        }
+    }
+}
+
+/// Wait for SIGINT (Ctrl-C) or SIGTERM.
+async fn shutdown_signal() {
+    use tokio::signal;
+
+    let ctrl_c = async {
+        signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl-C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        signal::unix::signal(signal::unix::SignalKind::terminate())
+            .expect("failed to install SIGTERM handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {}
+        _ = terminate => {}
+    }
+}
+
+/// Save the node's identity so the next boot reuses it instead of registering
+/// again. A failure here is only a warning — the node can still run this
+/// session, it just won't remember who it is next time.
+fn persist_identity(cfg: &NodeConfig) {
+    let registered_at = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    let saved = NodeState {
+        node_id: cfg.node_id.clone(),
+        node_token: cfg.node_token.clone(),
+        server_url: cfg.server_url.clone(),
+        registered_at,
+    };
+
+    match saved.save(&cfg.state_path) {
+        Ok(()) => eprintln!("[node] identity saved to {}", cfg.state_path),
+        Err(e) => eprintln!(
+            "[node] warning: could not save identity to {}: {e}",
+            cfg.state_path
+        ),
     }
 }

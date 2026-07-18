@@ -1,0 +1,14 @@
+[project]
+name = "web-example"
+runtime = "python"
+version = "0.1.0"
+entry = "web_example.py"
+output_dir = ".tandem_build/web-example"
+
+[build]
+# Vendor the app's dependencies into ./libs before shipping it. The node runs
+# the app with no network, so Flask has to travel inside the bundle. `tandem
+# serve` runs this for you.
+install = "python3 -m pip install flask --target libs"
+# How Tandem starts the app on each node. It binds $TANDEM_SERVE_SOCKET.
+start = "python3 web_example.py"
