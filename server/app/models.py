@@ -13,6 +13,15 @@ class Deployment(db.Model):
     pid: Mapped[str] = mapped_column(
         String(32), unique=True, nullable=False, index=True
     )
+    # Stable owner reference. We resolve deployment access through this instead
+    # of api_key, because api_key rotation deletes the old UserAPI row and would
+    # otherwise orphan every deployment the user made under the old key.
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # Kept only as the quota bucket the deployment was created under -- quota is
+    # tracked per api_key, not per user, so we still need the key here. It is no
+    # longer used to decide ownership.
     api_key: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
 
 
