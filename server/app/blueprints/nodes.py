@@ -25,7 +25,7 @@ from app.utils.task_queue import (
     get_task,
     requeue_task,
 )
-from flask import Blueprint, after_this_request, current_app, jsonify, request, send_file
+from flask import Blueprint, current_app, jsonify, request, send_file
 
 logger = logging.getLogger(__name__)
 
@@ -260,8 +260,13 @@ def download_task_blob(tid: str, download_token: str):
         },
     )
 
-    # Attach encryption key headers if available
-    enc_key_row = TaskEncryptionKey.query.filter_by(tid=tid).first()
+    # Serve the DEK copy wrapped to THIS node's key. Each node gets its own
+    # wrapped copy at task creation, so a task that failed over still has a key
+    # the current holder can unwrap. We don't delete it here -- the task might
+    # fail over again -- it's cleared when the task completes or fails.
+    enc_key_row = TaskEncryptionKey.query.filter_by(
+        tid=tid, target_node_id=node_id
+    ).first()
 
     response = send_file(
         blob_path,
@@ -273,15 +278,6 @@ def download_task_blob(tid: str, download_token: str):
     if enc_key_row is not None:
         response.headers["X-Task-Dek-Encrypted"] = enc_key_row.encrypted_dek_b64
         response.headers["X-Task-IV"] = enc_key_row.iv_b64
-
-        @after_this_request
-        def _cleanup_enc_key(resp):
-            try:
-                TaskEncryptionKey.query.filter_by(tid=tid).delete()
-                db.session.commit()
-            except Exception:
-                logger.warning("Failed to delete TaskEncryptionKey for %s", tid, exc_info=True)
-            return resp
 
     return response
 

@@ -57,9 +57,10 @@ class TaskEncryptionKey(db.Model):
     __tablename__ = "task_encryption_keys"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    tid: Mapped[str] = mapped_column(
-        String(64), unique=True, nullable=False, index=True
-    )
+    # A task's DEK is wrapped once per node, so tid is no longer unique on its
+    # own -- there's one row per (tid, target_node_id). That's what lets a task
+    # fail over to any node and still be decryptable there.
+    tid: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     job_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     encrypted_dek_b64: Mapped[str] = mapped_column(Text, nullable=False)
     iv_b64: Mapped[str] = mapped_column(String(64), nullable=False)

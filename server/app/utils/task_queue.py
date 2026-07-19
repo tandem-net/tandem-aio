@@ -281,10 +281,10 @@ def select_least_loaded_node(available_nodes: list[str], pending: dict[str, int]
     We count both the tasks already sitting in a node's Redis queue and the ones
     we've assigned so far in this same planning pass (tracked in `pending`), so a
     burst of tasks in one job spreads out across nodes instead of piling onto
-    whoever happened to be shortest when we started. Assignment stays per-node
-    (not a shared pull queue) on purpose: each task's key is wrapped to its
-    node's public key at creation time, and that's what keeps the server from
-    being able to read task payloads.
+    whoever happened to be shortest when we started. The task's DEK is wrapped
+    to every registered node's public key at creation time, so any node can run
+    it after a failover while the server (holding no private keys) still can't
+    read the payload.
     """
 
     def load(node_id: str) -> int:
@@ -316,21 +316,19 @@ def create_task(
     tid = generate_tid()
     timestamp = now_ts()
     blob_path = task_blob_path(job_id, tid, filename)
-    write_bytes(blob_path, payload)
 
     # --- Encrypt task payload at rest with AES-256-GCM ---
     dek = os.urandom(32)
     iv = os.urandom(12)
     ciphertext = AESGCM(dek).encrypt(iv, payload, None)
-    # Overwrite plaintext on disk so it never lingers
-    write_bytes(blob_path, ciphertext)
 
-    if assigned_node:
-        node_key_row = NodePublicKey.query.filter_by(node_id=assigned_node).first()
-    else:
-        node_key_row = None
-
-    if node_key_row is not None:
+    # Wrap the DEK for EVERY node that has registered a public key, not just the
+    # one we happened to assign this task to. Failover can move a task to any
+    # healthy node, and each node can only unwrap a DEK that was encrypted to its
+    # own public key -- pinning the key to a single node meant every failover
+    # produced a job nobody could decrypt. One wrapped copy per node fixes that.
+    wrapped_any = False
+    for node_key_row in NodePublicKey.query.all():
         try:
             public_key = serialization.load_pem_public_key(
                 node_key_row.rsa_public_key_pem.encode("utf-8")
@@ -343,31 +341,39 @@ def create_task(
                     label=None,
                 ),
             )
-            enc_key_row = TaskEncryptionKey(
-                tid=tid,
-                job_id=job_id,
-                encrypted_dek_b64=base64.b64encode(encrypted_dek).decode("ascii"),
-                iv_b64=base64.b64encode(iv).decode("ascii"),
-                target_node_id=assigned_node,
+            db.session.add(
+                TaskEncryptionKey(
+                    tid=tid,
+                    job_id=job_id,
+                    encrypted_dek_b64=base64.b64encode(encrypted_dek).decode("ascii"),
+                    iv_b64=base64.b64encode(iv).decode("ascii"),
+                    target_node_id=node_key_row.node_id,
+                )
             )
-            db.session.add(enc_key_row)
-            db.session.commit()
+            wrapped_any = True
         except Exception:
             logger.warning(
-                "Failed to RSA-encrypt DEK for task %s / node %s – "
-                "task will be stored encrypted but key row was not saved",
+                "Failed to RSA-wrap DEK for task %s / node %s – skipping that node",
                 tid,
-                assigned_node,
+                node_key_row.node_id,
                 exc_info=True,
             )
+
+    if wrapped_any:
+        db.session.commit()
+        # Only the encrypted bytes ever touch disk once we know some node can
+        # unwrap them.
+        write_bytes(blob_path, ciphertext)
     else:
-        if assigned_node:
-            logger.warning(
-                "Node %s has no registered RSA public key – "
-                "task %s payload encrypted with AES but DEK is not wrapped",
-                assigned_node,
-                tid,
-            )
+        # Nobody has a registered public key, so an encrypted blob would be
+        # undecryptable by everyone. Store the payload as-is and let the node
+        # run it in the clear (the node treats a blob with no DEK header as
+        # plaintext).
+        logger.warning(
+            "No registered node public keys – storing task %s payload unencrypted",
+            tid,
+        )
+        write_bytes(blob_path, payload)
 
     redis_client.hset(
         f"task:{tid}",
@@ -408,6 +414,29 @@ def create_task(
         redis_client.rpush(_unassigned_queue_key(runtime), tid)
 
     return tid
+
+
+def nodes_holding_task_key(tid: str) -> set[str]:
+    """Node ids that hold a wrapped copy of this task's DEK.
+
+    An empty set means the task isn't encrypted (no wrapped keys), so any node
+    can run it. Otherwise only these nodes can actually decrypt the payload.
+    """
+    rows = TaskEncryptionKey.query.filter_by(tid=tid).all()
+    return {row.target_node_id for row in rows}
+
+
+def decryptable_destinations(tid: str, candidates: list[str]) -> list[str]:
+    """Narrow a list of candidate nodes to ones that can decrypt this task.
+
+    If the task isn't encrypted we leave the candidates untouched. This keeps
+    failover from handing an encrypted task to a node that has no wrapped DEK
+    copy and would just fail to decrypt it.
+    """
+    holders = nodes_holding_task_key(tid)
+    if not holders:
+        return candidates
+    return [node_id for node_id in candidates if node_id in holders]
 
 
 def requeue_task(tid: str, assigned_node: str | None) -> None:
@@ -459,6 +488,7 @@ def requeue_stale_tasks() -> None:
         healthy_destinations = get_healthy_node_ids(
             exclude=node_id, required_runtime=task_runtime
         )
+        healthy_destinations = decryptable_destinations(current_tid, healthy_destinations)
         destination = healthy_destinations[0] if healthy_destinations else None
 
         requeue_task(current_tid, destination)
@@ -495,6 +525,7 @@ def drain_dead_node_queues() -> None:
 
             runtime = task.get("runtime") or "cloudpickle"
             destinations = get_healthy_node_ids(exclude=node_id, required_runtime=runtime)
+            destinations = decryptable_destinations(tid, destinations)
             requeue_task(tid, destinations[0] if destinations else None)
 
 
@@ -579,6 +610,14 @@ def claim_task_for_node(node_id: str) -> dict[str, str] | None:
         requeue_task(tid, None)
         return None
 
+    # Don't hand an encrypted task off the unassigned queue to a node that has
+    # no wrapped DEK copy (e.g. one that registered after the task was created)
+    # -- it could download the blob but never decrypt it.
+    holders = nodes_holding_task_key(tid)
+    if holders and node_id not in holders:
+        requeue_task(tid, None)
+        return None
+
     claim_token = generate_token()
     download_token = generate_token()
     current = time.time()
@@ -634,6 +673,19 @@ def extend_task_lease(node_id: str) -> None:
     )
 
 
+def delete_task_keys(tid: str) -> None:
+    """Drop all wrapped DEK copies for a task once it's reached a terminal state.
+
+    We keep every node's copy around while the task is still runnable so it can
+    fail over; only when it's done (or failed for good) do we clear them.
+    """
+    try:
+        TaskEncryptionKey.query.filter_by(tid=tid).delete()
+        db.session.commit()
+    except Exception:
+        logger.warning("Failed to delete encryption keys for task %s", tid, exc_info=True)
+
+
 def complete_task(tid: str, node_id: str, *, result_bytes: bytes) -> dict[str, Any]:
     task = get_task(tid)
     if not task:
@@ -661,6 +713,7 @@ def complete_task(tid: str, node_id: str, *, result_bytes: bytes) -> dict[str, A
     )
 
     remove_file(task.get("blob_path"))
+    delete_task_keys(tid)
     return refresh_job_status(task["job_id"])
 
 
@@ -687,6 +740,7 @@ def fail_task(tid: str, node_id: str, *, error_message: str) -> dict[str, Any]:
     )
 
     remove_file(task.get("blob_path"))
+    delete_task_keys(tid)
     return refresh_job_status(task["job_id"])
 
 
