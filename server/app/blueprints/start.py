@@ -223,12 +223,9 @@ def _planned_wasm_shards(task_entry: dict[str, Any], available_nodes: list[str])
     if strategy != "data_parallel":
         return 1
 
-    # The unified SDK writes the split hint as `chunk` (from the user's
-    # tandem.split(fn, chunk=N)); older manifests used `max_shards`. Accept
-    # either so the fan-out cap keeps flowing through to the planner.
+    # The SDK writes the split hint as `chunk` (from the user's
+    # tandem.split(fn, chunk=N)); that's the fan-out cap the planner uses.
     raw_cap = split_hint.get("chunk")
-    if raw_cap is None:
-        raw_cap = split_hint.get("max_shards")
     shard_cap = _coerce_non_negative_int(raw_cap) or 1
     if shard_cap < 2 or len(available_nodes) < 2:
         return 1

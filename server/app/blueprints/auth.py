@@ -95,12 +95,6 @@ def _load_public_key():
     return serialization.load_pem_public_key(pub_path.read_bytes())
 
 
-def _load_public_key_pem() -> str:
-    """Return the RSA public key as a PEM string (for the /public-key endpoint)."""
-    _, pub_path = _resolve_key_paths()
-    return pub_path.read_text()
-
-
 # ---------------------------------------------------------------------------
 # Token issuance
 # ---------------------------------------------------------------------------
@@ -145,18 +139,6 @@ def _revoke_refresh_token(user_id: int, jti: str) -> None:
 def _is_refresh_token_valid(user_id: int, jti: str) -> bool:
     """Check whether a refresh token's JTI is still active in Redis."""
     return redis_client.exists(f"session:{user_id}:{jti}") == 1
-
-
-def _revoke_all_sessions(user_id: int) -> None:
-    """Revoke all active sessions for a user (full logout from all devices)."""
-    pattern = f"session:{user_id}:*"
-    cursor = 0
-    while True:
-        cursor, keys = redis_client.scan(cursor, match=pattern, count=100)
-        for key in keys:
-            redis_client.delete(key)
-        if cursor == 0:
-            break
 
 
 # ---------------------------------------------------------------------------
@@ -334,27 +316,10 @@ def logout():
     """
     Revoke the current session's refresh token.
 
-    Request body: { "refresh_token": str } OR { "logout_all": true } with Bearer access token
+    Request body: { "refresh_token": str }
     """
     data = _json_data()
-    logout_all = bool(data.get("logout_all"))
 
-    # If logout_all, require a valid access token
-    if logout_all:
-        auth_header = (request.headers.get("Authorization") or "").strip()
-        if not auth_header.startswith("Bearer "):
-            return jsonify({"error": "Authorization header required for logout_all"}), 401
-        token = auth_header.split(" ", 1)[1].strip()
-        try:
-            payload = jwt.decode(token, _load_public_key(), algorithms=["RS256"])
-            user_id = int(payload["sub"])
-            _revoke_all_sessions(user_id)
-            logger.info("All sessions revoked for user_id %s", user_id)
-            return jsonify({"status": "success", "message": "All sessions revoked"}), 200
-        except jwt.InvalidTokenError:
-            return jsonify({"error": "Invalid access token"}), 401
-
-    # Single session logout via refresh token
     refresh_token = (data.get("refresh_token") or "").strip()
     if not refresh_token:
         return jsonify({"error": "refresh_token is required"}), 400
@@ -375,36 +340,6 @@ def logout():
 
     logger.info("Session %s revoked for user_id %s", jti, user_id)
     return jsonify({"status": "success", "message": "Logged out"}), 200
-
-
-@auth_bp.route("/me", methods=["GET"])
-@require_jwt
-def me():
-    """
-    Return the authenticated user's profile.
-    Requires: Authorization: Bearer <access_token>
-    """
-    user: User = g.current_user
-    api_key = _ensure_api_key_for_user(user)
-    return jsonify({
-        "user_id": user.id,
-        "username": user.username,
-        "api_key": api_key,
-    }), 200
-
-
-@auth_bp.route("/public-key", methods=["GET"])
-def public_key():
-    """
-    Return the server's RSA public key in PEM format.
-    Allows CLI and Desktop to verify JWTs offline.
-    """
-    try:
-        pem = _load_public_key_pem()
-        return jsonify({"public_key_pem": pem}), 200
-    except Exception as exc:
-        logger.error("Could not load public key: %s", exc)
-        return jsonify({"error": "Public key unavailable"}), 500
 
 
 @auth_bp.route("/register", methods=["POST"])

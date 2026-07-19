@@ -13,7 +13,7 @@ class UsageCommandTests(unittest.TestCase):
     def _run_with_payload(self, payload: dict) -> str:
         args = argparse.Namespace(server_url=None, api_key=None)
         buffer = io.StringIO()
-        with patch("tandem_cli.remote.fetch_usage", return_value=payload):
+        with patch("tandem_cli.commands.fetch_usage", return_value=payload):
             with redirect_stdout(buffer):
                 exit_code = commands._cmd_usage(args)
         self.assertEqual(exit_code, 0)
