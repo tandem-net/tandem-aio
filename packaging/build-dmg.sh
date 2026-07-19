@@ -100,3 +100,12 @@ hdiutil create \
   "$OUTPUT" >/dev/null
 
 echo "Built $OUTPUT"
+
+# 3. Also install onto this machine right now, same as double-clicking
+# Install.command would do. That way running this script is enough on its
+# own -- the .dmg is just there to hand off to someone else's Mac.
+echo "Installing tandem and tandem-node to /usr/local/bin (you may be asked for your password)..."
+sudo mkdir -p /usr/local/bin
+sudo install -m 0755 "$STAGING/tandem" /usr/local/bin/tandem
+sudo install -m 0755 "$STAGING/tandem-node" /usr/local/bin/tandem-node
+echo "Installed. Log in with 'tandem auth login', then start the worker with 'tandem node start'."
