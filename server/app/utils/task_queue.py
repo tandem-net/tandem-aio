@@ -550,6 +550,29 @@ def requeue_stale_tasks() -> None:
         redis_client.hset(f"node:{node_id}", mapping={"current_task": ""})
 
 
+def drain_node_queue(node_id: str) -> None:
+    """Hand everything still waiting in one node's queue to somebody else."""
+    queue_key = f"node:{node_id}:queue"
+
+    while True:
+        raw_tid = redis_client.lpop(queue_key)
+        if raw_tid is None:
+            break
+
+        tid = str(decode_value(raw_tid))
+        task = get_task(tid)
+        # Only re-home work that's still waiting to run; anything already
+        # finished or failed can be left where it is.
+        if not task or task.get("status") not in {"queued", "claimed", "running"}:
+            continue
+
+        runtime = task.get("runtime") or "cloudpickle"
+        destinations = get_healthy_node_ids(exclude=node_id, required_runtime=runtime)
+        destinations = decryptable_destinations(tid, destinations)
+        destinations = exclude_group_siblings(tid, destinations)
+        requeue_task(tid, destinations[0] if destinations else None)
+
+
 def drain_dead_node_queues() -> None:
     """Move still-unclaimed tasks off the queues of nodes that have gone away.
 
@@ -565,24 +588,7 @@ def drain_dead_node_queues() -> None:
         if not node or is_node_healthy(node, now=current):
             continue
 
-        queue_key = f"node:{node_id}:queue"
-        while True:
-            raw_tid = redis_client.lpop(queue_key)
-            if raw_tid is None:
-                break
-
-            tid = str(decode_value(raw_tid))
-            task = get_task(tid)
-            # Only re-home work that's still waiting to run; anything already
-            # finished or failed can be left where it is.
-            if not task or task.get("status") not in {"queued", "claimed", "running"}:
-                continue
-
-            runtime = task.get("runtime") or "cloudpickle"
-            destinations = get_healthy_node_ids(exclude=node_id, required_runtime=runtime)
-            destinations = decryptable_destinations(tid, destinations)
-            destinations = exclude_group_siblings(tid, destinations)
-            requeue_task(tid, destinations[0] if destinations else None)
+        drain_node_queue(node_id)
 
 
 def sweep_stale_work() -> None:

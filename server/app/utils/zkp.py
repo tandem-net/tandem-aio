@@ -22,6 +22,7 @@ from cryptography.hazmat.primitives.asymmetric import padding, utils as asym_uti
 
 from app.extensions import redis_client
 from app.models import NodePublicKey
+from app.utils.task_queue import drain_node_queue
 
 logger = logging.getLogger(__name__)
 
@@ -135,6 +136,11 @@ def ban_node(node_id: str, reason: str) -> None:
     same identity doesn't quietly let it back in.
     """
     redis_client.set(_banned_flag_key(node_id), reason or "banned")
+
+    # Hand off whatever it was still sitting on before dropping it from the
+    # `nodes` set -- once it's out of that set the failover sweep stops looking
+    # at it, and anything left in its queue would just be stranded.
+    drain_node_queue(node_id)
     redis_client.srem("nodes", node_id)
 
     key_row = NodePublicKey.query.filter_by(node_id=node_id).first()
