@@ -81,6 +81,17 @@ def create_app():
     if task_storage_root:
         app.config["TASK_STORAGE_ROOT"] = task_storage_root
 
+    # Redundant execution: what share of tasks (0-100) get run on several nodes
+    # at once so their results can be compared. Off unless someone turns it on,
+    # since it multiplies the cost of every task it touches.
+    app.config["VERIFY_SAMPLE_PERCENT"] = os.environ.get(
+        "TANDEM_VERIFY_SAMPLE_PERCENT", 0
+    )
+    app.config["VERIFY_COPIES"] = os.environ.get("TANDEM_VERIFY_COPIES", 3)
+    app.config["VERIFY_TIMEOUT_SECONDS"] = os.environ.get(
+        "TANDEM_VERIFY_TIMEOUT_SECONDS", 300
+    )
+
     app.config["NODE_REGISTRATION_TOKEN"] = _resolve_node_registration_token(server_dir)
 
     redis_client.init_app(app)

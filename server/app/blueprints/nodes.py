@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import base64
 import json
-import logging
 import os
 import secrets
 import time
@@ -12,7 +11,7 @@ from cryptography.hazmat.primitives import serialization
 
 from app.extensions import db, redis_client
 from app.models import Deployment, NodePublicKey, TaskEncryptionKey
-from app.utils import quota, zkp
+from app.utils import quota, verify, zkp
 from app.utils.auth import get_api_client
 from app.utils.task_queue import (
     TASK_LEASE_SECONDS,
@@ -26,8 +25,6 @@ from app.utils.task_queue import (
     requeue_task,
 )
 from flask import Blueprint, current_app, jsonify, request, send_file
-
-logger = logging.getLogger(__name__)
 
 nodes_bp = Blueprint("nodes", __name__)
 
@@ -66,6 +63,13 @@ def _require_node_auth():
 
     if not compare_token(node.get("node_token"), token):
         return None, None, (jsonify({"error": "Invalid node token"}), 403)
+
+    # Every node route comes through here, so this one check keeps a banned node
+    # away from claiming, downloading, reporting, and heartbeating alike. It has
+    # to live here rather than in the `nodes` set: a heartbeat re-adds the node
+    # to that set, so dropping it there on its own never stuck.
+    if zkp.is_node_banned(node_id):
+        return None, None, (jsonify({"error": "Node is banned"}), 403)
 
     return node_id, node, None
 
@@ -145,6 +149,13 @@ def register():
         return registration_error
 
     data = request.get_json(silent=True) or {}
+
+    # Don't let a banned node walk back in through the front door with a fresh
+    # node id. Checked before anything gets written so nothing is left behind.
+    rsa_pem = (data.get("rsa_public_key_pem") or "").strip()
+    if rsa_pem and zkp.is_public_key_banned(rsa_pem):
+        return jsonify({"error": "This node key is banned"}), 403
+
     node_id = f"node_{uuid.uuid4().hex[:12]}"
     node_token = secrets.token_urlsafe(32)
     timestamp = str(time.time())
@@ -169,7 +180,6 @@ def register():
     redis_client.sadd("nodes", node_id)
 
     # Accept optional RSA public key for task payload encryption
-    rsa_pem = (data.get("rsa_public_key_pem") or "").strip()
     if rsa_pem:
         try:
             serialization.load_pem_public_key(rsa_pem.encode("utf-8"))
@@ -316,12 +326,7 @@ def submit_task_result(tid: str):
 
         verified, reason = zkp.verify_receipt(receipt, result_bytes, node_id)
         if not verified:
-            bad_count = zkp.increment_bad_receipt_count(node_id)
-            if bad_count >= zkp.BAD_RECEIPT_THRESHOLD:
-                redis_client.srem("nodes", node_id)
-                logger.warning(
-                    "Node %s deregistered after %d bad receipts", node_id, bad_count
-                )
+            zkp.penalize_node(node_id, reason)
             # Re-queue the task instead of completing it
             requeue_task(tid, None)
             return jsonify({"error": f"Receipt verification failed: {reason}"}), 403
@@ -336,6 +341,9 @@ def submit_task_result(tid: str):
                 quota.record_usage(dep.api_key, instruction_count)
 
         summary = complete_task(tid, node_id, result_bytes=result_bytes)
+        # If this task is being cross-checked, see whether the other copies are
+        # in yet and whether they agree.
+        verify.on_task_settled(tid)
         return jsonify(
             {
                 "status": "completed",
@@ -347,6 +355,7 @@ def submit_task_result(tid: str):
     data = request.get_json(silent=True) or {}
     error_message = (data.get("error") or "Task execution failed").strip()
     summary = fail_task(tid, node_id, error_message=error_message)
+    verify.on_task_settled(tid)
 
     return jsonify(
         {

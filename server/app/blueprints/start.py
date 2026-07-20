@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from app.models import Deployment
+from app.utils import verify
 from app.utils.auth import ensure_deployment_access, require_user_api_key
 from app.utils.task_queue import (
     compare_token,
@@ -110,6 +111,7 @@ def _queue_planned_tasks(
     name: str,
     metadata: dict[str, Any],
     planned_tasks: list[dict[str, Any]],
+    available_nodes: list[str],
 ) -> tuple[Any, int]:
     job_info = create_job(
         pid=pid,
@@ -119,6 +121,11 @@ def _queue_planned_tasks(
     )
     job_id = job_info["job_id"]
     job_token = job_info["job_token"]
+
+    # Some of these get run on several nodes at once so we can compare the
+    # answers. Doing it here rather than in the planners means both the wasm and
+    # cloudpickle paths get checked without either of them knowing about it.
+    planned_tasks = verify.plan_verification_replicas(planned_tasks, available_nodes)
 
     for planned_task in planned_tasks:
         create_task(
@@ -133,6 +140,8 @@ def _queue_planned_tasks(
             timeout_ms=planned_task.get("timeout_ms"),
             shard_index=planned_task.get("shard_index"),
             shard_total=planned_task.get("shard_total"),
+            verify_group=planned_task.get("verify_group", ""),
+            verify_replica=planned_task.get("verify_replica", False),
         )
 
     return _build_job_response(
@@ -378,6 +387,7 @@ def start():
         name=name,
         metadata=relevant,
         planned_tasks=planned_tasks,
+        available_nodes=available_nodes,
     )
 
 
