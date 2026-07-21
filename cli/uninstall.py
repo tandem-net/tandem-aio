@@ -29,9 +29,13 @@ def _tandem_root() -> Path:
     return node_paths.NODE_HOME.parent
 
 
-def _posix_launcher() -> Path:
-    """The `tandem` symlink install.sh drops on PATH (Linux/macOS)."""
-    return Path.home() / ".local" / "bin" / "tandem"
+def _posix_launchers() -> list[Path]:
+    """The symlinks install.sh drops on PATH (Linux/macOS): the `tandem` command
+    and the `tandem-node` worker linked next to it. Both live outside ~/.tandem,
+    so they have to be removed on their own -- deleting the folder leaves them
+    behind as dead links otherwise."""
+    bin_dir = Path.home() / ".local" / "bin"
+    return [bin_dir / "tandem", bin_dir / "tandem-node"]
 
 
 def _windows_launcher() -> Path:
@@ -105,7 +109,7 @@ def perform_uninstall() -> list[str]:
     # 3. Remove the `tandem` launcher on PATH. The POSIX one lives outside
     # ~/.tandem, so it has to go separately, and so do the raw binaries a .dmg
     # install drops in /usr/local/bin.
-    for launcher in (_posix_launcher(), _windows_launcher(), *_system_bin_binaries()):
+    for launcher in (*_posix_launchers(), _windows_launcher(), *_system_bin_binaries()):
         try:
             if launcher.is_symlink() or launcher.exists():
                 launcher.unlink()
