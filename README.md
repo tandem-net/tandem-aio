@@ -46,11 +46,11 @@ tandem start
 
 For details on how the system is put together and operational instructions, see:
 
-* **[Tandem Architecture](file:///c:/Users/aryan/Downloads/Projects/Tandem/docs/ARCHITECTURE.md)**: Explains the high-level design, components, how execution flows, and system security boundaries in plain terms.
-* **[REST API Reference](file:///c:/Users/aryan/Downloads/Projects/Tandem/docs/API_REFERENCE.md)**: Explains all server blueprints, expected request/response shapes, and authentication details.
-* **[CLI Commands Reference](file:///c:/Users/aryan/Downloads/Projects/Tandem/cli/README.md)**: Extensive documentation of all available CLI operations, local workflow examples, and parameters.
-* **[Python SDK Documentation](file:///c:/Users/aryan/Downloads/Projects/Tandem/sdk/python-sdk/README.md)**: Reference manual for all Python APIs, decorators, and parallel execution helpers.
-* **[SDK Usage Guide](file:///c:/Users/aryan/Downloads/Projects/Tandem/sdk/python-sdk/GUIDE.md)**: A detailed walkthrough with code examples for every SDK feature.
+* **[Tandem Architecture](docs/ARCHITECTURE.md)**: Explains the high-level design, components, how execution flows, and system security boundaries in plain terms.
+* **[REST API Reference](docs/API_REFERENCE.md)**: Explains all server blueprints, expected request/response shapes, and authentication details.
+* **[CLI Commands Reference](cli/README.md)**: Extensive documentation of all available CLI operations, local workflow examples, and parameters.
+* **[Python SDK Documentation](sdk/python-sdk/README.md)**: Reference manual for all Python APIs, decorators, and parallel execution helpers.
+* **[SDK Usage Guide](sdk/python-sdk/GUIDE.md)**: A detailed walkthrough with code examples for every SDK feature.
 
 ---
 
