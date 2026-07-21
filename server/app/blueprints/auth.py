@@ -198,6 +198,19 @@ def _json_data() -> dict:
     return request.get_json(silent=True) or {}
 
 
+def _reserve_unique_api_key() -> str:
+    """Pick an API key that isn't already taken, without saving anything.
+
+    The caller decides which user it belongs to and commits it. Splitting this
+    out means both "create a first key" and "rotate to a new key" share the same
+    uniqueness check instead of copying the retry loop twice."""
+    for _ in range(_MAX_API_KEY_GENERATION_ATTEMPTS):
+        api_key = generate_api_key()
+        if not db.session.scalars(select(UserAPI).where(UserAPI.api_key == api_key)).first():
+            return api_key
+    raise RuntimeError("Could not generate a unique API key")
+
+
 def _ensure_api_key_for_user(user: User) -> str:
     """Return the user's existing API key, or create one if none exists."""
     existing = db.session.scalars(
@@ -205,16 +218,35 @@ def _ensure_api_key_for_user(user: User) -> str:
     ).first()
     if existing:
         return existing.api_key
-    for _ in range(_MAX_API_KEY_GENERATION_ATTEMPTS):
-        api_key = generate_api_key()
-        if not db.session.scalars(select(UserAPI).where(UserAPI.api_key == api_key)).first():
-            entry = UserAPI()
-            entry.user_id = user.id
-            entry.api_key = api_key
-            db.session.add(entry)
-            db.session.commit()
-            return api_key
-    raise RuntimeError("Could not generate a unique API key")
+    api_key = _reserve_unique_api_key()
+    entry = UserAPI()
+    entry.user_id = user.id
+    entry.api_key = api_key
+    db.session.add(entry)
+    db.session.commit()
+    return api_key
+
+
+def _rotate_api_key_for_user(user: User) -> str:
+    """Swap the user's API key out for a brand-new one.
+
+    We drop every key row the user has and add a single fresh one in the same
+    transaction, so they're never left without a working key. Deployments aren't
+    touched on purpose: they're owned by user_id now (see ensure_deployment_access),
+    so the old key going away can't orphan them behind a 403. That's the whole
+    reason rotation is safe to offer."""
+    new_key = _reserve_unique_api_key()
+    existing_keys = db.session.scalars(
+        select(UserAPI).where(UserAPI.user_id == user.id)
+    ).all()
+    for row in existing_keys:
+        db.session.delete(row)
+    entry = UserAPI()
+    entry.user_id = user.id
+    entry.api_key = new_key
+    db.session.add(entry)
+    db.session.commit()
+    return new_key
 
 
 # ---------------------------------------------------------------------------
@@ -235,6 +267,9 @@ def login():
     data = _json_data()
     username = (data.get("username") or "").strip()
     password = data.get("password") or ""
+    # When the client asks to rotate, we mint a fresh API key instead of handing
+    # back the existing one. The CLI's `tandem auth login --rotate-api-key` sends this.
+    rotate_api_key = bool(data.get("rotate_api_key"))
 
     if not username or not password:
         return jsonify({"error": "Username and password are required"}), 400
@@ -247,7 +282,10 @@ def login():
     try:
         access_token = _issue_access_token(user)
         refresh_token, _ = _issue_refresh_token(user)
-        api_key = _ensure_api_key_for_user(user)
+        if rotate_api_key:
+            api_key = _rotate_api_key_for_user(user)
+        else:
+            api_key = _ensure_api_key_for_user(user)
     except Exception as exc:
         logger.error("Token issuance failed for user %s: %s", username, exc)
         return jsonify({"error": "Authentication service error"}), 500
