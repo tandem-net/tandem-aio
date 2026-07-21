@@ -1075,15 +1075,15 @@ def _cmd_status(_args: argparse.Namespace) -> int:
 
 
 def _fmt_amount(value, unit: str) -> str:
-    """Format a usage amount for humans: GiB for bytes, commas for fuel."""
+    """Format a usage amount for humans: GiB for bytes, commas for seconds."""
     try:
         number = float(value)
     except (TypeError, ValueError):
         return f"{value} {unit}"
     if unit == "bytes":
         return f"{number / (2 ** 30):.2f} GiB"
-    if unit == "fuel":
-        return f"{int(number):,} fuel"
+    if unit == "seconds":
+        return f"{int(number):,} seconds"
     return f"{number:g} {unit}"
 
 

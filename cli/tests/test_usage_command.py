@@ -24,10 +24,10 @@ class UsageCommandTests(unittest.TestCase):
             "account": {"user_id": 1},
             "resources": [
                 {
-                    "type": "instructions",
+                    "type": "compute",
                     "used": 250,
                     "limit": 1000,
-                    "unit": "fuel",
+                    "unit": "seconds",
                     "percent": 25.0,
                     "source": "measured",
                 },
@@ -44,9 +44,9 @@ class UsageCommandTests(unittest.TestCase):
 
         output = self._run_with_payload(payload)
 
-        self.assertIn("instructions", output)
+        self.assertIn("compute", output)
         self.assertIn("25.0%", output)
-        self.assertIn("fuel", output)
+        self.assertIn("seconds", output)
         # the placeholder metric is labelled and rendered in GiB
         self.assertIn("ram", output)
         self.assertIn("(placeholder)", output)

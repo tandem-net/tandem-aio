@@ -18,7 +18,8 @@ from cryptography.hazmat.primitives.asymmetric import padding, rsa  # noqa: E402
 
 from app import create_app  # noqa: E402
 from app.extensions import db, redis_client  # noqa: E402
-from app.utils import receipts, task_queue, verify  # noqa: E402
+from app.models import Deployment, User  # noqa: E402
+from app.utils import quota, receipts, task_queue, verify  # noqa: E402
 
 
 # What a node looks like from the test's side: its id, its bearer token, and the
@@ -35,16 +36,18 @@ def _make_keypair():
     return private_key, public_pem
 
 
-def _sign_receipt(private_key, tid: str, result_bytes: bytes) -> str:
+def _sign_receipt(
+    private_key, tid: str, result_bytes: bytes, instruction_count: int = 4242
+) -> str:
     """Build the execution receipt exactly the way the Rust node does.
 
     A dishonest node signs its made-up result just as correctly as an honest
     one signs real work, which is the whole reason redundancy has to exist -- so
-    the tests sign every result properly, lies included.
+    the tests sign every result properly, lies included. The instruction_count is
+    settable so a test can sign an absurd figure and prove billing ignores it.
     """
     output_hash = hashlib.sha256(result_bytes).hexdigest()
     memory_hash = hashlib.sha256(b"").hexdigest()
-    instruction_count = 4242
 
     message = f"{tid}|{instruction_count}|{memory_hash}|{output_hash}".encode("utf-8")
     signature = private_key.sign(
@@ -404,6 +407,66 @@ class ResultVerificationTests(unittest.TestCase):
         self._run(self.nodes[0], b"the right answer")
         self.assertEqual(task_queue.get_task(tids[0])["status"], "completed")
         self.assertTrue(task_queue.refresh_job_status(self.job_id)["done"])
+
+    def test_billing_uses_server_time_not_the_receipts_number(self) -> None:
+        """A node signs its own instruction_count, so it could put anything there.
+        We bill the seconds the server watched the task run, so a forged figure
+        never reaches the quota."""
+        # One plain primary task, no cross-checking copies to muddy the billing.
+        self.app.config["VERIFY_SAMPLE_PERCENT"] = 0
+
+        # A deployment ties the task's pid to an API key -- the quota bucket.
+        user = User(username="biller", password="unused")
+        db.session.add(user)
+        db.session.flush()
+        db.session.add(
+            Deployment(name="bill", pid="pid_test", user_id=user.id, api_key="BILLKEY")
+        )
+        db.session.commit()
+
+        tid = task_queue.create_task(
+            job_id=self.job_id,
+            pid="pid_test",
+            name="verify-test",
+            filename="task.wasm",
+            payload=b"the work to be done",
+            assigned_node=self.nodes[0].node_id,
+            runtime="wasm",
+            task_name="demo",
+        )
+
+        # Claiming stamps claimed_at = now; rewind it five seconds so the task
+        # looks like it genuinely occupied the node for a measurable stretch.
+        claim = self.client.post(
+            "/nodes/tasks/claim", headers=self._headers(self.nodes[0])
+        )
+        self.assertEqual(claim.status_code, 200, claim.get_data(as_text=True))
+        claimed = claim.get_json()
+        self.assertEqual(claimed["tid"], tid)
+        rewound = float(task_queue.get_task(tid)["claimed_at"]) - 5.0
+        redis_client.hset(f"task:{tid}", "claimed_at", str(rewound))
+
+        # The node reports a billion instructions. Billing must not care.
+        result_bytes = b"the right answer"
+        response = self.client.post(
+            f"/nodes/tasks/{tid}/result",
+            data=result_bytes,
+            headers={
+                **self._headers(self.nodes[0]),
+                "Content-Type": "application/octet-stream",
+                "X-Task-Claim": claimed["claim_token"],
+                "X-Execution-Receipt": _sign_receipt(
+                    self.nodes[0].private_key, tid, result_bytes,
+                    instruction_count=10**9,
+                ),
+            },
+        )
+        self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+
+        _, info = quota.check_quota("BILLKEY")
+        # Charged on our clock -- about five seconds, nowhere near the billion.
+        self.assertGreaterEqual(info["used"], 5)
+        self.assertLess(info["used"], 60)
 
     def test_too_few_nodes_to_form_a_majority(self) -> None:
         """Two nodes can disagree but can't name a liar, so don't bother."""
