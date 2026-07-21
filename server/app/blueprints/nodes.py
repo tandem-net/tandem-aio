@@ -11,7 +11,7 @@ from cryptography.hazmat.primitives import serialization
 
 from app.extensions import db, redis_client
 from app.models import Deployment, NodePublicKey, TaskEncryptionKey
-from app.utils import quota, verify, zkp
+from app.utils import quota, receipts, verify
 from app.utils.auth import get_api_client
 from app.utils.task_queue import (
     TASK_LEASE_SECONDS,
@@ -69,7 +69,7 @@ def _require_node_auth():
     # away from claiming, downloading, reporting, and heartbeating alike. It has
     # to live here rather than in the `nodes` set: a heartbeat re-adds the node
     # to that set, so dropping it there on its own never stuck.
-    if zkp.is_node_banned(node_id):
+    if receipts.is_node_banned(node_id):
         return None, None, (jsonify({"error": "Node is banned"}), 403)
 
     return node_id, node, None
@@ -154,7 +154,7 @@ def register():
     # Don't let a banned node walk back in through the front door with a fresh
     # node id. Checked before anything gets written so nothing is left behind.
     rsa_pem = (data.get("rsa_public_key_pem") or "").strip()
-    if rsa_pem and zkp.is_public_key_banned(rsa_pem):
+    if rsa_pem and receipts.is_public_key_banned(rsa_pem):
         return jsonify({"error": "This node key is banned"}), 403
 
     node_id = f"node_{uuid.uuid4().hex[:12]}"
@@ -325,9 +325,9 @@ def submit_task_result(tid: str):
         except Exception:
             return jsonify({"error": "Could not decode execution receipt"}), 400
 
-        verified, reason = zkp.verify_receipt(receipt, result_bytes, node_id)
+        verified, reason = receipts.verify_receipt(receipt, result_bytes, node_id)
         if not verified:
-            zkp.penalize_node(node_id, reason)
+            receipts.penalize_node(node_id, reason)
             # Re-queue the task instead of completing it
             requeue_task(tid, None)
             return jsonify({"error": f"Receipt verification failed: {reason}"}), 403

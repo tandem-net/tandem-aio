@@ -12,7 +12,7 @@ Security model:
   - Public key endpoint: allows CLI/Desktop to verify tokens offline
 
 This blueprint is ADDITIVE — it does not modify the existing UserAPI key system,
-NodePublicKey RSA verification, or ZKP receipt verification in any way.
+NodePublicKey RSA verification, or signed receipt verification in any way.
 """
 
 from __future__ import annotations

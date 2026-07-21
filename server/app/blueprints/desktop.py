@@ -2,7 +2,7 @@
 Desktop and CLI API routes for the Tandem server.
 
 All routes here require a valid JWT access token issued by
-/api/v1/auth/login. The UserAPI key system and node ZKP verification are
+/api/v1/auth/login. The UserAPI key system and node receipt verification are
 separate and unaffected.
 
 Routes:

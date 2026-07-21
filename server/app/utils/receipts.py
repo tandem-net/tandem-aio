@@ -1,13 +1,16 @@
-"""Fiat-Shamir execution receipt verifier.
+"""Signed execution receipts and node reputation.
 
-Verifies RSA-PSS signed execution receipts submitted by compute nodes and
-tracks bad-receipt counts in Redis for node reputation management.
+Verifies the RSA-PSS signed receipt a compute node submits with each result, and
+tracks bad-receipt counts in Redis so nodes that keep failing get banned.
 
-Worth being clear about what a receipt does and doesn't prove: it shows that
-*this* node produced *these* bytes and that nobody altered them in transit. It
-says nothing about whether the bytes are the right answer -- a dishonest node
-hashes and signs its garbage just as correctly as an honest one signs real work.
-Catching that takes a second opinion, which is what `app.utils.verify` does.
+Worth being clear about what a receipt does and doesn't prove -- the name of the
+game here is a plain digital signature, not a proof of computation. It shows that
+*this* node produced *these* exact bytes (we re-derive the output hash ourselves)
+and that nobody altered them in transit. It says nothing about whether the bytes
+are the right answer, or how much work actually ran -- a dishonest node hashes
+and signs its garbage just as correctly as an honest one signs real work.
+Catching a wrong answer takes a second opinion, which is what `app.utils.verify`
+does; the real cost of a task is metered by the server, not read off the receipt.
 """
 
 from __future__ import annotations
@@ -99,7 +102,10 @@ def verify_receipt(
     except Exception as exc:
         return False, f"Signature verification error: {exc}"
 
-    # 4. Verification succeeded – instruction_count is available for quota tracking
+    # 4. Signature checks out. The receipt carries an instruction_count too, but
+    #    it's node-reported and we don't bill on it -- quota is metered from the
+    #    server's own clock (see app.utils.quota). It stays in the signed message
+    #    only so the signature covers everything the node claimed.
     return True, ""
 
 

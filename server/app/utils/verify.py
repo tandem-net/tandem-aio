@@ -23,7 +23,7 @@ import time
 from typing import Any
 
 from app.extensions import redis_client
-from app.utils import zkp
+from app.utils import receipts
 from app.utils.task_queue import (
     decode_value,
     delete_task_keys,
@@ -214,7 +214,7 @@ def settle_group(verify_group: str) -> None:
 
         node_id = (voter.get("assigned_node") or "").strip()
         if node_id:
-            zkp.ban_node(
+            receipts.ban_node(
                 node_id,
                 f"result mismatch on task {voter.get('tid')} "
                 f"(verification group {verify_group})",

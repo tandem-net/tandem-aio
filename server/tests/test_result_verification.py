@@ -18,7 +18,7 @@ from cryptography.hazmat.primitives.asymmetric import padding, rsa  # noqa: E402
 
 from app import create_app  # noqa: E402
 from app.extensions import db, redis_client  # noqa: E402
-from app.utils import task_queue, verify, zkp  # noqa: E402
+from app.utils import receipts, task_queue, verify  # noqa: E402
 
 
 # What a node looks like from the test's side: its id, its bearer token, and the
@@ -314,7 +314,7 @@ class ResultVerificationTests(unittest.TestCase):
             task_name="unrelated",
         )
 
-        zkp.ban_node(self.nodes[0].node_id, "test")
+        receipts.ban_node(self.nodes[0].node_id, "test")
 
         moved = task_queue.get_task(waiting)
         self.assertEqual(moved["status"], "queued")
@@ -325,7 +325,7 @@ class ResultVerificationTests(unittest.TestCase):
     def test_a_ban_survives_the_next_heartbeat(self) -> None:
         """Dropping a node from the `nodes` set alone never stuck -- its next
         heartbeat put it straight back."""
-        zkp.ban_node(self.nodes[0].node_id, "test")
+        receipts.ban_node(self.nodes[0].node_id, "test")
 
         response = self.client.post(
             "/nodes/health", json={}, headers=self._headers(self.nodes[0])
