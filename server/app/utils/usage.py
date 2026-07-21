@@ -1,9 +1,9 @@
 """Per-account resource usage: what an account is using, and against what limit.
 
-This is scaffolding. Today only compute (instruction fuel) is really measured;
-RAM, storage, CPU, and GPU are placeholders with clear limits, sitting behind
-the same interface so they can be filled in later without changing any callers
-or the `tandem usage` output.
+This is scaffolding. Today only compute time (seconds the server measured) is
+really measured; RAM, storage, CPU, and GPU are placeholders with clear limits,
+sitting behind the same interface so they can be filled in later without
+changing any callers or the `tandem usage` output.
 
 Limits are per user *account*. A user may hold several API keys, so usage is
 summed across all of a user's keys.
@@ -22,7 +22,7 @@ from app.utils import quota
 # Per-account limits. Real enforcement comes later; for now these are just the
 # numbers `tandem usage` shows percentages against. They're deliberately simple
 # constants so they're easy to move to per-account config or a DB column later.
-ACCOUNT_INSTRUCTION_LIMIT = quota.QUOTA_DEFAULT_LIMIT  # fuel units, rolling 24h
+ACCOUNT_COMPUTE_LIMIT_SECONDS = quota.QUOTA_DEFAULT_LIMIT  # compute seconds, rolling 24h
 ACCOUNT_RAM_LIMIT_BYTES = 5 * 2**30                    # 5 GiB
 ACCOUNT_STORAGE_LIMIT_BYTES = 5 * 2**30                # 5 GiB
 ACCOUNT_CPU_LIMIT_CORES = 4                            # placeholder
@@ -69,17 +69,17 @@ def _account_api_keys(user_id: int) -> list[str]:
     return list(db.session.scalars(statement).all())
 
 
-def _collect_instructions(user_id: int) -> ResourceMetric:
-    """Real: sum the rolling instruction usage across the account's API keys."""
+def _collect_compute(user_id: int) -> ResourceMetric:
+    """Real: sum the rolling compute-seconds usage across the account's API keys."""
     used = 0
     for api_key in _account_api_keys(user_id):
         _, info = quota.check_quota(api_key)
         used += int(info.get("used", 0))
     return ResourceMetric(
-        type="instructions",
+        type="compute",
         used=float(used),
-        limit=float(ACCOUNT_INSTRUCTION_LIMIT),
-        unit="fuel",
+        limit=float(ACCOUNT_COMPUTE_LIMIT_SECONDS),
+        unit="seconds",
         source=MEASURED,
     )
 
@@ -87,7 +87,7 @@ def _collect_instructions(user_id: int) -> ResourceMetric:
 def usage_for_user(user_id: int) -> list[ResourceMetric]:
     """Gather every resource metric for one account.
 
-    Only instructions are really measured today. RAM, storage, CPU, and GPU are
+    Only compute time is really measured today. RAM, storage, CPU, and GPU are
     placeholders -- a fixed limit with 0 used -- until each one gets wired up.
     This is also the order `tandem usage` prints them in.
     """
@@ -102,7 +102,7 @@ def usage_for_user(user_id: int) -> list[ResourceMetric]:
         )
 
     return [
-        _collect_instructions(user_id),
+        _collect_compute(user_id),
         placeholder("ram", ACCOUNT_RAM_LIMIT_BYTES, "bytes"),
         placeholder("storage", ACCOUNT_STORAGE_LIMIT_BYTES, "bytes"),
         placeholder("cpu", ACCOUNT_CPU_LIMIT_CORES, "cores"),

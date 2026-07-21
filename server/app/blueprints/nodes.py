@@ -15,6 +15,7 @@ from app.utils import quota, verify, zkp
 from app.utils.auth import get_api_client
 from app.utils.task_queue import (
     TASK_LEASE_SECONDS,
+    billed_seconds,
     claim_task_for_node,
     compare_token,
     complete_task,
@@ -331,14 +332,17 @@ def submit_task_result(tid: str):
             requeue_task(tid, None)
             return jsonify({"error": f"Receipt verification failed: {reason}"}), 403
 
-        # Record instruction usage against the API key's quota
-        instruction_count = receipt.get("instruction_count", 0)
-        task_job = task.get("job_id", "")
-        task_pid = task.get("pid", "")
-        if task_pid:
-            dep = Deployment.query.filter_by(pid=task_pid).first()
-            if dep and dep.api_key:
-                quota.record_usage(dep.api_key, instruction_count)
+        # Charge the API key's quota for the compute this task used. We bill the
+        # seconds the server watched it run, not the instruction_count the node
+        # signed for itself -- the node owns that key and could put any number
+        # there. Verification replicas are hidden copies the user never asked
+        # for, so we don't bill those against them at all.
+        if not task.get("verify_replica"):
+            task_pid = task.get("pid", "")
+            if task_pid:
+                dep = Deployment.query.filter_by(pid=task_pid).first()
+                if dep and dep.api_key:
+                    quota.record_usage(dep.api_key, billed_seconds(task))
 
         summary = complete_task(tid, node_id, result_bytes=result_bytes)
         # If this task is being cross-checked, see whether the other copies are

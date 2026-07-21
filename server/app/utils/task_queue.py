@@ -4,6 +4,7 @@ import base64
 import hashlib
 import json
 import logging
+import math
 import os
 import pathlib
 import secrets
@@ -62,6 +63,18 @@ def safe_int(value: Any, default: int = 0) -> int:
         return int(value)
     except (TypeError, ValueError):
         return default
+
+
+def billed_seconds(task: dict[str, str]) -> int:
+    """Whole seconds the server watched this task occupy a node, floored at 1.
+
+    We charge quota against this instead of anything the node hands us. Both the
+    claim stamp and "now" come from our own clock (see claim_task_for_node and
+    complete_task), so a node can't shrink or pad the number. If a task somehow
+    finished without a claim stamp we fall back to when it was created.
+    """
+    start = safe_float(task.get("claimed_at") or task.get("created_at"), time.time())
+    return max(1, math.ceil(time.time() - start))
 
 
 def compare_token(expected: str | None, provided: str | None) -> bool:
