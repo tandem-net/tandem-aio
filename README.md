@@ -1,3 +1,3 @@
 # Tandem
 
-MVP on main branch, check out our latest unstable build on mock-2.
+MVP on main branch, check out our latest unstable build on alpha branch.
